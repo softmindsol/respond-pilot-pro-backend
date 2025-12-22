@@ -120,9 +120,60 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
         throw new Error('Failed to fetch comments. Make sure the channel is connected.');
     }
 };
+
+const getChannelVideos = async (userId, pageToken = '') => {
+    // 1. User aur Token lein
+    const user = await User.findById(userId).select('+youtubeRefreshToken');
+
+    if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
+        throw new Error('User is not connected to YouTube.');
+    }
+
+    // 2. Credentials set karein
+    oauth2Client.setCredentials({
+        refresh_token: user.youtubeRefreshToken
+    });
+
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+    try {
+        // 3. Videos Search karein (forMine: true ka matlab meri videos)
+        const response = await youtube.search.list({
+            part: 'snippet',
+            forMine: true,       // Sirf authenticated user ki videos
+            type: 'video',       // Sirf videos (playlist/channel nahi)
+            order: 'date',       // Latest videos pehle
+            maxResults: 10,      // Ek page par 10 videos
+            pageToken: pageToken || undefined
+        });
+
+        // 4. Data Clean Karein
+        const videos = response.data.items.map(item => {
+            return {
+                videoId: item.id.videoId, // <--- YE ID AAP COMMENTS API KO DENGE
+                title: item.snippet.title,
+                description: item.snippet.description,
+                thumbnail: item.snippet.thumbnails.medium.url,
+                publishedAt: item.snippet.publishedAt,
+                videoLink: `https://www.youtube.com/watch?v=${item.id.videoId}`
+            };
+        });
+
+        return {
+            videos,
+            nextPageToken: response.data.nextPageToken,
+            pageInfo: response.data.pageInfo
+        };
+
+    } catch (error) {
+        console.error('YouTube Videos API Error:', error.message);
+        throw new Error('Failed to fetch videos.');
+    }
+};
 export default {
     generateAuthUrl,
     handleCallback,
-    getChannelComments
+    getChannelComments,
+    getChannelVideos
     
 };

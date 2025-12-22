@@ -45,9 +45,19 @@ const getComments = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-
+const getVideos = async (req, res) => {
+    try {
+        const { pageToken } = req.query;
+        const data = await youtubeService.getChannelVideos(req.user._id, pageToken);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 export default {
     getAuthUrl,
     googleCallback,
-    getComments
+    getComments,
+    getVideos 
+
 };
