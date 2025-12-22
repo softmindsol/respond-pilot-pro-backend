@@ -9,5 +9,6 @@ router.get('/auth-url', protect, youtubeController.getAuthUrl);
 
 // Public: Google calls this. We validate the user via the 'state' param.
 router.get('/callback', youtubeController.googleCallback);
+router.get('/comments', protect, youtubeController.getComments);
 
 export default router;

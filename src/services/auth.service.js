@@ -172,7 +172,6 @@ const verifyOtp = async ({ email, otp }) => {
         resetPasswordOtpExpires: { $gt: Date.now() },
     });
 
-    console.log("VerifyOtp - Email:", normalizedEmail, "OTP:", otp);
 
     if (!user) {
         throw new Error('Invalid OTP or Email (Password Reset)');

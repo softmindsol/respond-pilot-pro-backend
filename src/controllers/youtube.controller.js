@@ -31,7 +31,23 @@ const googleCallback = async (req, res) => {
     }
 };
 
+const getComments = async (req, res) => {
+    try {
+        // URL se pageToken aur videoId lein
+        // Example: /api/youtube/comments?videoId=12345&pageToken=abc
+        const { pageToken, videoId } = req.query;
+
+        // Service ko videoId pass karein
+        const data = await youtubeService.getChannelComments(req.user._id, pageToken, videoId);
+
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export default {
     getAuthUrl,
-    googleCallback
+    googleCallback,
+    getComments
 };

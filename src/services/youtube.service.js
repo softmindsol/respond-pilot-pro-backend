@@ -57,7 +57,72 @@ const handleCallback = async (code, userId) => {
     return { channelName: channel.snippet.title };
 };
 
+const getChannelComments = async (userId, pageToken = '', videoId = null) => {
+    // 1. User fetch karein
+    const user = await User.findById(userId).select('+youtubeRefreshToken');
+
+    if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
+        throw new Error('User is not connected to YouTube or Token is missing.');
+    }
+
+    // 2. Credentials set karein
+    oauth2Client.setCredentials({
+        refresh_token: user.youtubeRefreshToken
+    });
+
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+    try {
+        // 3. Request Parameters banayein
+        const requestParams = {
+            part: 'snippet',
+            maxResults: 20,
+            pageToken: pageToken || undefined,
+            order: 'time', // Latest comments pehle
+            textFormat: 'plainText' // HTML tags hata kar simple text layega
+        };
+
+        // LOGIC: Agar videoId di hai to uske comments, warna pure channel ke videos ke comments
+        if (videoId) {
+            requestParams.videoId = videoId;
+        } else {
+            requestParams.allThreadsRelatedToChannelId = user.youtubeChannelId;
+        }
+
+        // 4. API Call
+        const response = await youtube.commentThreads.list(requestParams);
+
+        // 5. Data Clean Karna
+        const comments = response.data.items.map(item => {
+            const topComment = item.snippet.topLevelComment.snippet;
+            return {
+                id: item.id, // Comment ID (Reply karne ke liye ye chahiye hoga)
+                video_id: topComment.videoId, // Kis video par comment aya
+                author: topComment.authorDisplayName,
+                authorImage: topComment.authorProfileImageUrl,
+                text: topComment.textDisplay,
+                publishedAt: topComment.publishedAt,
+                likeCount: topComment.likeCount,
+                replyCount: item.snippet.totalReplyCount,
+                canReply: item.snippet.canReply,
+                videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}` // Direct link to comment
+            };
+        });
+
+        return {
+            comments,
+            nextPageToken: response.data.nextPageToken,
+            pageInfo: response.data.pageInfo
+        };
+
+    } catch (error) {
+        console.error('YouTube API Error:', error.message);
+        throw new Error('Failed to fetch comments. Make sure the channel is connected.');
+    }
+};
 export default {
     generateAuthUrl,
-    handleCallback
+    handleCallback,
+    getChannelComments
+    
 };
