@@ -9,5 +9,6 @@ router.get('/auth-url', protect, youtubeController.getAuthUrl);
 router.get('/videos', protect, youtubeController.getVideos);
 router.get('/callback', youtubeController.googleCallback);
 router.get('/comments', protect, youtubeController.getComments);
+router.post('/reply', protect, youtubeController.postReply);
 
 export default router;

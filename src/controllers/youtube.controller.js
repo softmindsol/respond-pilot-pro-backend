@@ -54,10 +54,25 @@ const getVideos = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+const postReply = async (req, res) => {
+    try {
+        const { commentId, commentText } = req.body;
+        console.log(commentId, commentText);
+        if (!commentId || !commentText) {
+            return res.status(400).json({ message: 'Comment ID and reply text are required.' });
+        }
+
+        const data = await youtubeService.postReplyToComment(req.user._id, commentId, commentText);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export default {
     getAuthUrl,
     googleCallback,
     getComments,
-    getVideos 
-
+    getVideos,
+    postReply
 };

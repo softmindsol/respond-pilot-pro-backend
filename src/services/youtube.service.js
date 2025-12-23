@@ -170,10 +170,48 @@ const getChannelVideos = async (userId, pageToken = '') => {
         throw new Error('Failed to fetch videos.');
     }
 };
+
+const postReplyToComment = async (userId, commentId, replyText) => {
+    // 1. User aur Token lein
+    const user = await User.findById(userId).select('+youtubeRefreshToken');
+
+    if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
+        throw new Error('User is not connected to YouTube.');
+    }
+
+    // 2. Auth Credentials set karein
+    oauth2Client.setCredentials({
+        refresh_token: user.youtubeRefreshToken
+    });
+
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+    try {
+        // 3. YouTube API: Comments.insert Call
+        // Ye specific structure chahiye hota hai YouTube ko
+        const response = await youtube.comments.insert({
+            part: 'snippet',
+            requestBody: {
+                snippet: {
+                    parentId: commentId, // Kis comment ka reply hai
+                    textOriginal: replyText // Kya reply karna hai
+                }
+            }
+        });
+
+        return response.data;
+
+    } catch (error) {
+        console.error('YouTube Post Reply Error:', error.message);
+        throw new Error('Failed to post reply on YouTube.');
+    }
+};
+
 export default {
     generateAuthUrl,
     handleCallback,
     getChannelComments,
-    getChannelVideos
+    getChannelVideos,
+    postReplyToComment
     
 };

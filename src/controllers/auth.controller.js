@@ -97,4 +97,26 @@ const resendVerificationOtp = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp };
+const getProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            plan: user.plan,
+            repliesUsed: user.repliesUsed,
+            isGoogleAuth: user.isGoogleAuth,
+            isConnectedToYoutube: user.isConnectedToYoutube,
+            youtubeChannelName: user.youtubeChannelName,
+            youtubeChannelId: user.youtubeChannelId,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile };
