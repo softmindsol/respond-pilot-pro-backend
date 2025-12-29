@@ -15,7 +15,12 @@ const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors());
+// app.use(cors());
+
+app.use(cors({
+    origin: "http://localhost:5173", // Apne Frontend ka URL likhein
+    credentials: true // Agar cookies use kar rahe hain
+}));
 
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));

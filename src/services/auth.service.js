@@ -77,7 +77,6 @@ const register = async (userData) => {
 
 const login = async ({ email, password }) => {
     const user = await User.findOne({ email: email.toLowerCase() });
-    console.log(user)
     if (user && (await user.matchPassword(password))) {
         if (!user.isVerified) {
             throw new Error('Please verify your email address');
@@ -88,6 +87,9 @@ const login = async ({ email, password }) => {
             name: user.name,
             email: user.email,
             plan: user.plan,
+            isConnectedToYoutube: user.isConnectedToYoutube,
+            youtubeChannelName: user.youtubeChannelName,
+            youtubeChannelId: user.youtubeChannelId,
             token: generateToken(user._id),
         };
     } else {
@@ -220,8 +222,7 @@ const verifyEmailOtp = async ({ email, otp }) => {
         verificationOtpExpires: { $gt: Date.now() },
     });
 
-    console.log("VerifyEmailOtp - Email:", normalizedEmail, "OTP:", otp);
-    console.log("VerifyEmailOtp - OTP Type:", typeof otp);
+
 
     if (!user) {
         // Debugging: check if user exists at all
@@ -241,26 +242,19 @@ const verifyEmailOtp = async ({ email, otp }) => {
         throw new Error('Invalid OTP or Email, or OTP expired (Email Verification)');
     }
 
-    console.log("✅ User found:", normalizedEmail);
-    console.log("   Is Verified:", user.isVerified);
 
     if (user.isVerified) {
         return { message: 'Email already verified' };
     }
 
-    console.log("🔐 Comparing OTP...");
-    console.log("   Received OTP:", otp);
-    console.log("   Stored Hash exists:", !!user.verificationOtp);
+
 
     const isMatch = await bcrypt.compare(otp.toString(), user.verificationOtp);
-
-    console.log("   Match Result:", isMatch);
 
     if (!isMatch) {
         throw new Error('Invalid OTP');
     }
 
-    console.log("💾 Updating user...");
     user.isVerified = true;
     user.verificationOtp = undefined;
     user.verificationOtpExpires = undefined;
@@ -274,9 +268,7 @@ const verifyEmailOtp = async ({ email, otp }) => {
         throw new Error(`Failed to save user: ${saveError.message}`);
     }
 
-    console.log("🎉 Generating token...");
     const token = generateToken(user._id);
-    console.log("✅ Token generated successfully");
 
     return {
         _id: user._id,

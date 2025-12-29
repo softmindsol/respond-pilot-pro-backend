@@ -57,7 +57,6 @@ const getVideos = async (req, res) => {
 const postReply = async (req, res) => {
     try {
         const { commentId, commentText } = req.body;
-        console.log(commentId, commentText);
         if (!commentId || !commentText) {
             return res.status(400).json({ message: 'Comment ID and reply text are required.' });
         }

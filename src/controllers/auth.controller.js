@@ -100,13 +100,14 @@ const resendVerificationOtp = async (req, res) => {
 const getProfile = async (req, res) => {
     try {
         const user = req.user;
+        console.log("user profile:",user)
         res.json({
             _id: user._id,
             name: user.name,
             email: user.email,
-            plan: user.plan,
             repliesUsed: user.repliesUsed,
             isGoogleAuth: user.isGoogleAuth,
+            plan: user.plan,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,

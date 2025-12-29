@@ -9,23 +9,29 @@ const protect = async (req, res, next) => {
         req.headers.authorization.startsWith('Bearer')
     ) {
         try {
+            // Get token from header
             token = req.headers.authorization.split(' ')[1];
 
+            // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+            // Get user from the token
             req.user = await User.findById(decoded.id).select('-password');
+
+            // 👇 SAFETY CHECK: Agar token sahi hai lekin user DB se delete ho gaya hai
+            if (!req.user) {
+                return res.status(401).json({ message: 'User not found' });
+            }
 
             next();
         } catch (error) {
-            console.error(error);
-            res.status(401);
-            res.json({ message: 'Not authorized, token failed' });
+            console.error("Token Verification Failed:", error);
+            // 👇 RETURN ZAROORI HAI taake code yahin ruk jaye
+            return res.status(401).json({ message: 'Not authorized, token failed' });
         }
-    }
-
-    if (!token) {
-        res.status(401);
-        res.json({ message: 'Not authorized, no token' });
+    } else {
+        // Agar header hi nahi hai
+        return res.status(401).json({ message: 'Not authorized, no token' });
     }
 };
 
