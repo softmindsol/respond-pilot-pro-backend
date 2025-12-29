@@ -64,6 +64,18 @@ const userSchema = mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        stripeCustomerId: {
+            type: String,
+        },
+        stripeSubscriptionId: {
+            type: String,
+        },
+        subscriptionStatus: {
+            type: String,
+        },
+        planExpiresAt: {
+            type: Date,
+        }
     },
     {
         timestamps: true,

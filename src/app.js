@@ -13,7 +13,14 @@ connectDB();
 
 const app = express();
 
-app.use(express.json());
+// Webhook route needs RAW body, so skip JSON parsing for it
+app.use((req, res, next) => {
+    if (req.originalUrl === '/api/subscription/webhook') {
+        next();
+    } else {
+        express.json()(req, res, next);
+    }
+});
 app.use(cookieParser());
 // app.use(cors());
 

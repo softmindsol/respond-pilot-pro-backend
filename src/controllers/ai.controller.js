@@ -1,4 +1,5 @@
 import { llmClient } from '../utils/llmClientStream.js';
+import User from '../models/user.model.js'; // Ensure User model is improved if we need explicit saving
 
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -6,6 +7,7 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 const STATUS_CODES = {
     BAD_REQUEST: 400,
+    FORBIDDEN: 403,
     INTERNAL_SERVER_ERROR: 500
 };
 
@@ -20,41 +22,123 @@ const isGibberish = (text) => {
     return text.trim().length < 1;
 };
 
+// --- Plan & Tone Constants ---
+const PLANS = {
+    FREE: 'Free',
+    BASIC: 'Basic',
+    PRO: 'Pro',
+    PRO_PLUS: 'ProPlus'
+};
+
+const PLAN_LIMITS = {
+    [PLANS.FREE]: 50,
+    [PLANS.BASIC]: 1000,
+    [PLANS.PRO]: 5000,
+    [PLANS.PRO_PLUS]: 15000
+};
+
+const PRESET_TONES = {
+    FRIENDLY: 'Friendly',
+    PROFESSIONAL: 'Professional',
+    ENGAGING: 'Engaging',
+    GRATEFUL: 'Grateful',
+    HUMOROUS: 'Humorous',
+    EMPATHETIC: 'Empathetic'
+};
+
+// Access Control Logic
+const checkPlanPermissions = (userPlan, requestedTone, customToneDescription, personaInstruction) => {
+    const plan = userPlan || PLANS.FREE;
+    const toneKey = (requestedTone || '').toLowerCase();
+
+    // 1. Check Persona Access (ProPlus Only)
+    if (personaInstruction && plan !== PLANS.PRO_PLUS) {
+        throw { message: 'Advanced Persona Instructions are only available on the Pro Plus plan.', code: STATUS_CODES.FORBIDDEN };
+    }
+
+    // 2. Check Custom Tone Description Access (Pro & ProPlus)
+    if (customToneDescription) {
+        if (plan !== PLANS.PRO && plan !== PLANS.PRO_PLUS) {
+            throw { message: 'Custom Tone Descriptions are available on Pro and Pro Plus plans.', code: STATUS_CODES.FORBIDDEN };
+        }
+    }
+
+    // 3. Check Standard Tone Access
+    // Free: Friendly Only
+    if (plan === PLANS.FREE) {
+        if (toneKey !== PRESET_TONES.FRIENDLY.toLowerCase()) {
+            throw { message: `Free plan only supports '${PRESET_TONES.FRIENDLY}' tone. Upgrade to unlock more.`, code: STATUS_CODES.FORBIDDEN };
+        }
+    }
+
+    // Basic: Friendly & Professional
+    if (plan === PLANS.BASIC) {
+        const allowed = [PRESET_TONES.FRIENDLY.toLowerCase(), PRESET_TONES.PROFESSIONAL.toLowerCase()];
+        if (!allowed.includes(toneKey)) {
+            throw { message: `Basic plan only supports Friendly and Professional tones. Upgrade to Pro for more.`, code: STATUS_CODES.FORBIDDEN };
+        }
+    }
+
+    // Pro & Above: All Presets are allowed.
+};
+
+
 const generateReplyPrompt = ({
     commentText,
     tone,
+    customToneDescription,
+    personaInstruction,
     videoTitle,
     authorName
 }) => {
-    return `You are a professional YouTube Creator. Your task is to write a reply to a user's comment.
+    // Base Identity
+    let identity = `You are a professional YouTube Creator.`;
+
+    // Override Identity if Persona is present (Pro Plus)
+    if (personaInstruction) {
+        identity = `You are a specific persona defined as follows: "${personaInstruction}". Act strictly according to this persona.`;
+    }
+
+    // Determine specific tone instruction
+    let toneInstruction = `Tone: ${tone || 'Professional & Engaging'}`;
+    if (customToneDescription) {
+        toneInstruction = `Tone/Style: ${customToneDescription}`; // Pro/ProPlus custom override
+    }
+
+    return `${identity}
+    
+    Your task is to write a reply to a user's comment.
 
     User Comment: "${commentText}"
     User Name: ${authorName || 'Viewer'}
     Video Context: ${videoTitle || 'General Video'}
     
-    tone: ${tone || 'Professional & Engaging'}
+    ${toneInstruction}
     
     Requirements:
     - Keep it concise (under 500 characters).
-    - Be friendly and encouraging.
+    - Be friendly and encouraging (unless persona dictates otherwise).
     - If the user asks a question, answer it briefly or thank them.
     - Do not include hashtags unless asked.
     - Output ONLY the reply text, no quotes.`;
 };
 
 // NON-STREAMING VERSION
-// Just returns { reply: "..." }
 export const generateReply = asyncHandler(async (req, res, next) => {
     const {
         commentText,
         comment,
         tone,
+        customToneDescription,
+        personaInstruction,
         videoTitle,
         authorName
     } = req.body;
-    console.log("authorName:", authorName);
+
+    const user = req.user; // From protect middleware
+
     const actualComment = commentText || comment;
-    console.log("actualComment:", actualComment)
+
     if (isGibberish(actualComment)) {
         return handleError(
             next,
@@ -63,10 +147,33 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         );
     }
 
+    // 1. CHECK USAGE LIMIT
+    const limit = PLAN_LIMITS[user.plan] || 0;
+    // Note: If user.plan is invalid/unknown, limit is 0, so it blocks.
+    if (user.repliesUsed >= limit) {
+        return handleError(
+            next,
+            `Usage limit reached. You have used ${user.repliesUsed}/${limit} replies for your ${user.plan} plan. Please upgrade to continue.`,
+            STATUS_CODES.FORBIDDEN
+        );
+    }
+
+    // Default tone if missing
+    const requestedTone = tone || PRESET_TONES.FRIENDLY;
+
+    // 2. VALIDATE PERMISSIONS
+    try {
+        checkPlanPermissions(user.plan, requestedTone, customToneDescription, personaInstruction);
+    } catch (permError) {
+        return handleError(next, permError.message, permError.code || 403);
+    }
+
     try {
         const prompt = generateReplyPrompt({
             commentText: actualComment,
-            tone,
+            tone: requestedTone,
+            customToneDescription,
+            personaInstruction,
             videoTitle,
             authorName
         });
@@ -78,10 +185,20 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             maxTokens: 500
         });
 
+        // 3. INCREMENT USAGE
+        // We do this after successful generation
+        user.repliesUsed = (user.repliesUsed || 0) + 1;
+        await user.save(); // Save to DB
+
         // Simple JSON Response
         res.json({
             reply: replyText,
-            success: true
+            success: true,
+            planUsed: user.plan,
+            usage: {
+                used: user.repliesUsed,
+                limit: limit
+            }
         });
 
     } catch (err) {

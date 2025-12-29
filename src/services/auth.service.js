@@ -5,6 +5,8 @@ import sendEmail from '../utils/sendEmail.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+import { verifyEmailTemplate, resetPasswordTemplate } from '../email-template/emailTemplate.js';
+
 const register = async (userData) => {
     const { name, email, password } = userData;
 
@@ -33,22 +35,7 @@ const register = async (userData) => {
     if (user) {
         // Send Email
         const message = `Your verification OTP is ${otp}. It expires in 24 hours.`;
-        const html = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-                <div style="text-align: center; padding-bottom: 20px;">
-                    <h1 style="color: #333;">Verify Your Email</h1>
-                </div>
-                <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; text-align: center;">
-                    <p style="font-size: 16px; color: #555;">Hello <strong>${name}</strong>,</p>
-                    <p style="font-size: 16px; color: #555;">Thank you for registering with Respond Pilot Pro. Please use the following OTP to verify your email address:</p>
-                    <h2 style="font-size: 32px; color: #007bff; letter-spacing: 5px; margin: 20px 0;">${otp}</h2>
-                    <p style="font-size: 14px; color: #888;">This OTP is valid for 24 hours.</p>
-                </div>
-                <div style="padding-top: 20px; text-align: center;">
-                    <p style="font-size: 14px; color: #aaa;">If you did not request this, please ignore this email.</p>
-                </div>
-            </div>
-        `;
+        const html = verifyEmailTemplate(name, otp);
 
         try {
             await sendEmail({
@@ -151,12 +138,14 @@ const forgotPassword = async (email) => {
 
     // Send Email
     const message = `Your password reset OTP is ${otp}. It expires in 10 minutes.`;
+    const html = resetPasswordTemplate(user.name, otp);
 
     try {
         await sendEmail({
             email: user.email,
             subject: 'Password Reset OTP',
             message,
+            html
         });
         return { message: 'Email sent' };
     } catch (error) {
@@ -303,19 +292,7 @@ const resendVerificationOtp = async (email) => {
 
     // Send Email
     const message = `Your new verification OTP is ${otp}. It expires in 24 hours.`;
-    const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-            <div style="text-align: center; padding-bottom: 20px;">
-                <h1 style="color: #333;">Verify Your Email</h1>
-            </div>
-            <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; text-align: center;">
-                <p style="font-size: 16px; color: #555;">Hello <strong>${user.name}</strong>,</p>
-                <p style="font-size: 16px; color: #555;">Here is your new OTP to verify your email address:</p>
-                <h2 style="font-size: 32px; color: #007bff; letter-spacing: 5px; margin: 20px 0;">${otp}</h2>
-                <p style="font-size: 14px; color: #888;">This OTP is valid for 24 hours.</p>
-            </div>
-        </div>
-    `;
+    const html = verifyEmailTemplate(user.name, otp);
 
     try {
         await sendEmail({
