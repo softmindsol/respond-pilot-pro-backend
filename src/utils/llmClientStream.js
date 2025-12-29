@@ -2,6 +2,40 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 let genAI = null;
 
+// Standard helper for direct non-streaming calls
+export async function llmClient({
+    model = 'gemini-2.5-flash',
+    prompt,
+    temperature = 0.7,
+    maxTokens = 800
+}) {
+    if (!genAI) {
+        if (!process.env.GEMINI_API_KEY) {
+            throw new Error('GEMINI_API_KEY is not set');
+        }
+        genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    }
+
+    try {
+        const generativeModel = genAI.getGenerativeModel({
+            model: model,
+            generationConfig: {
+                temperature,
+                maxOutputTokens: maxTokens,
+            }
+        });
+
+        const result = await generativeModel.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+
+    } catch (err) {
+        console.error("AI Error:", err);
+        throw new Error('AI generation failed');
+    }
+}
+
+
 export async function llmClientStream({
     model = 'gemini-2.5-flash',
     prompt,
@@ -18,8 +52,11 @@ export async function llmClientStream({
     }
 
     try {
+        // Fallback to gemini-2.5-flash if experimental model fails
+        let targetModel = model;
+
         const generativeModel = genAI.getGenerativeModel({
-            model: model,
+            model: targetModel,
             generationConfig: {
                 temperature,
                 maxOutputTokens: maxTokens,

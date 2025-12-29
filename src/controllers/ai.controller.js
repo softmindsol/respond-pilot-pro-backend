@@ -1,4 +1,4 @@
-import { llmClientStream } from '../utils/llmClientStream.js';
+import { llmClient } from '../utils/llmClientStream.js';
 
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -6,10 +6,7 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 const STATUS_CODES = {
     BAD_REQUEST: 400,
-    INTERNAL_SERVER_ERROR: 500,
-    SERVICE_UNAVAILABLE: 503,
-    TOO_MANY_REQUESTS: 429,
-    UNAUTHORIZED: 401
+    INTERNAL_SERVER_ERROR: 500
 };
 
 const handleError = (next, message, statusCode) => {
@@ -20,7 +17,7 @@ const handleError = (next, message, statusCode) => {
 
 const isGibberish = (text) => {
     if (!text || typeof text !== 'string') return true;
-    return text.trim().length < 2;
+    return text.trim().length < 1;
 };
 
 const generateReplyPrompt = ({
@@ -45,15 +42,20 @@ const generateReplyPrompt = ({
     - Output ONLY the reply text, no quotes.`;
 };
 
-export const generateReplyStream = asyncHandler(async (req, res, next) => {
+// NON-STREAMING VERSION
+// Just returns { reply: "..." }
+export const generateReply = asyncHandler(async (req, res, next) => {
     const {
         commentText,
+        comment,
         tone,
         videoTitle,
         authorName
     } = req.body;
-
-    if (isGibberish(commentText)) {
+    console.log("authorName:", authorName);
+    const actualComment = commentText || comment;
+    console.log("actualComment:", actualComment)
+    if (isGibberish(actualComment)) {
         return handleError(
             next,
             'Comment text is invalid or too short.',
@@ -61,115 +63,33 @@ export const generateReplyStream = asyncHandler(async (req, res, next) => {
         );
     }
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (res.flushHeaders) res.flushHeaders();
-
-    let closed = false;
-    let fullContent = '';
-    let chunkCount = 0;
-    const startTime = Date.now();
-
-    res.on('close', () => (closed = true));
-    res.on('error', () => (closed = true));
-
-    const prompt = generateReplyPrompt({
-        commentText,
-        tone,
-        videoTitle,
-        authorName
-    });
-
-    const metadata = {
-        type: 'Reply',
-        commentText: commentText.substring(0, 50) + '...',
-        requestedTone: tone,
-        createdAt: new Date().toISOString(),
-    };
-
-    // Send initial metadata
-    res.write(`data: ${JSON.stringify({
-        type: 'metadata',
-        data: metadata
-    })}\n\n`);
-
     try {
-        await llmClientStream({
+        const prompt = generateReplyPrompt({
+            commentText: actualComment,
+            tone,
+            videoTitle,
+            authorName
+        });
+
+        const replyText = await llmClient({
             model: 'gemini-2.5-flash',
             prompt,
             temperature: 0.7,
-            maxTokens: 300, // Replies are short
-            onChunk: (chunk) => {
-                if (closed) return;
-
-                fullContent += chunk;
-                chunkCount++;
-
-                res.write(`data: ${JSON.stringify({
-                    type: 'chunk',
-                    chunk,
-                    index: chunkCount,
-                    timestamp: new Date().toISOString()
-                })}\n\n`);
-            }
+            maxTokens: 500
         });
 
-        if (closed) return;
-
-        if (!fullContent.trim()) {
-            res.write(`data: ${JSON.stringify({
-                type: 'error',
-                code: 'EMPTY_RESPONSE',
-                message: 'AI returned empty content'
-            })}\n\n`);
-            return res.end();
-        }
-
-        res.write(`data: ${JSON.stringify({
-            type: 'complete',
-            data: {
-                content: fullContent.trim(),
-                statistics: {
-                    chunksReceived: chunkCount,
-                    totalDuration: Date.now() - startTime,
-                }
-            }
-        })}\n\n`);
-
-        res.end();
+        // Simple JSON Response
+        res.json({
+            reply: replyText,
+            success: true
+        });
 
     } catch (err) {
-        if (closed) return;
-        console.error("Stream generation error:", err);
-
-        let code = 'GENERATION_ERROR';
-        let message = err.message || 'Failed to generate content';
-
-        if (err.status === 503) {
-            code = 'MODEL_OVERLOADED';
-            message = 'AI model is busy.';
-        } else if (err.status === 429) {
-            code = 'RATE_LIMIT';
-            message = 'Rate limit exceeded.';
-        } else if (err.status === 401 || err.status === 403) {
-            code = 'API_KEY_ERROR';
-            message = 'AI service authentication failed.';
-        }
-
-        res.write(`data: ${JSON.stringify({
-            type: 'error',
-            code,
-            message,
-            retryAfter: err.status === 503 ? 5 : undefined
-        })}\n\n`);
-
-        res.end();
+        console.error("AI Error:", err);
+        res.status(500).json({ message: "Failed to generate AI reply" });
     }
 });
 
 export default {
-    generateReplyStream
+    generateReply
 };
