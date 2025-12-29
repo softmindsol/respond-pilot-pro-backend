@@ -25,6 +25,17 @@ const createSession = async (req, res) => {
     }
 };
 
+const createCustomerPortal = async (req, res) => {
+    try {
+        const user = req.user;
+        const session = await subscriptionService.createCustomerPortalSession(user);
+        res.json({ url: session.url });
+    } catch (error) {
+        console.error("Portal Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const handleWebhook = async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
@@ -53,5 +64,6 @@ const handleWebhook = async (req, res) => {
 
 export default {
     createSession,
+    createCustomerPortal,
     handleWebhook
 };

@@ -70,7 +70,23 @@ export const createCheckoutSession = async (user, planType) => {
     return session;
 };
 
-// 2. Handle Webhook Events
+// 2. Create Customer Portal Session (For managing existing subs)
+export const createCustomerPortalSession = async (user) => {
+    if (!stripe) throw new Error("Stripe is not configured set STRIPE_SECRET_KEY");
+
+    if (!user.stripeCustomerId) {
+        throw new Error('User does not have a billing account yet.');
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${process.env.CLIENT_URL}/dashboard`,
+    });
+
+    return session;
+};
+
+// 3. Handle Webhook Events
 export const handleWebhook = async (event) => {
     if (!stripe) return;
 
@@ -85,6 +101,10 @@ export const handleWebhook = async (event) => {
         case 'invoice.payment_failed':
             // Handle failed payment
             await handleInvoicePaymentFailed(event.data.object);
+            break;
+        case 'customer.subscription.updated':
+            // Handle plan changes (upgrades/downgrades via portal)
+            await handleSubscriptionUpdated(event.data.object);
             break;
         case 'customer.subscription.deleted':
             // Subscription cancelled/expired
@@ -104,12 +124,7 @@ const handleCheckoutCompleted = async (session) => {
     if (!user) return;
 
     if (planType === 'TopUp') {
-        // One-time payment: Add 500 replies
-        user.repliesUsed = Math.max(0, user.repliesUsed - 500); // Or use a separate 'credits' logic? 
-        // User asked: "Top up me 500" - Likely means ADD 500 quota or Reset count?
-        // Let's assume TopUp gives extra capacity. But current logic is "repliesUsed vs Limit".
-        // A better way for TopUp is: "Limit = Limit + 500". But our limit is hardcoded by Plan.
-        // Alternative: Reduce 'repliesUsed' by 500 so they have more room.
+        // One-time payment: Add 500 replies capacity
         user.repliesUsed = Math.max(0, (user.repliesUsed || 0) - 500);
     } else {
         // Change Plan
@@ -144,6 +159,28 @@ const handleInvoicePaymentFailed = async (invoice) => {
     }
 };
 
+const handleSubscriptionUpdated = async (subscription) => {
+    const user = await User.findOne({ stripeCustomerId: subscription.customer });
+    if (!user) return;
+
+    // Check status
+    if (subscription.status === 'active') {
+        // We need to identify WHICH plan this is now.
+        // Usually we look at items.data[0].price.id
+        const priceId = subscription.items.data[0].price.id;
+
+        // Reverse lookup Price ID -> Plan Name
+        const planName = Object.keys(PLAN_PRICES).find(key => PLAN_PRICES[key] === priceId);
+
+        if (planName) {
+            user.plan = planName;
+            user.stripeSubscriptionId = subscription.id;
+            user.subscriptionStatus = 'active';
+            await user.save();
+        }
+    }
+};
+
 const handleSubscriptionDeleted = async (subscription) => {
     const user = await User.findOne({ stripeSubscriptionId: subscription.id });
     if (user) {
@@ -156,5 +193,6 @@ const handleSubscriptionDeleted = async (subscription) => {
 
 export default {
     createCheckoutSession,
+    createCustomerPortalSession,
     handleWebhook
 };

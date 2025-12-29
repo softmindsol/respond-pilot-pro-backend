@@ -10,5 +10,6 @@ router.post('/webhook', express.raw({ type: 'application/json' }), subscriptionC
 
 // Protected routes
 router.post('/create-checkout-session', protect, subscriptionController.createSession);
+router.post('/create-portal-session', protect, subscriptionController.createCustomerPortal);
 
 export default router;
