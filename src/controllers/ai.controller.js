@@ -1,5 +1,5 @@
 import { llmClient } from '../utils/llmClientStream.js';
-import User from '../models/user.model.js'; // Ensure User model is improved if we need explicit saving
+import User from '../models/user.model.js';
 
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -28,13 +28,6 @@ const PLANS = {
     BASIC: 'Basic',
     PRO: 'Pro',
     PRO_PLUS: 'ProPlus'
-};
-
-const PLAN_LIMITS = {
-    [PLANS.FREE]: 50,
-    [PLANS.BASIC]: 1000,
-    [PLANS.PRO]: 5000,
-    [PLANS.PRO_PLUS]: 15000
 };
 
 const PRESET_TONES = {
@@ -148,12 +141,14 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 
     // 1. CHECK USAGE LIMIT
-    const limit = PLAN_LIMITS[user.plan] || 0;
-    // Note: If user.plan is invalid/unknown, limit is 0, so it blocks.
-    if (user.repliesUsed >= limit) {
+    // Use DATABASE FIELD (repliesLimit) instead of hardcoded map
+    const limit = user.repliesLimit || 0;
+    const used = user.repliesUsed || 0;
+
+    if (used >= limit) {
         return handleError(
             next,
-            `Usage limit reached. You have used ${user.repliesUsed}/${limit} replies for your ${user.plan} plan. Please upgrade to continue.`,
+            `Usage limit reached. You have used ${used}/${limit} replies. Please Top Up or Upgrade to continue.`,
             STATUS_CODES.FORBIDDEN
         );
     }

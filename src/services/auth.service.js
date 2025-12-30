@@ -74,6 +74,8 @@ const login = async ({ email, password }) => {
             name: user.name,
             email: user.email,
             plan: user.plan,
+            repliesLimit: user.repliesLimit,
+            repliesUsed: user.repliesUsed || 0,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
@@ -112,6 +114,8 @@ const googleLogin = async (idToken) => {
             name: user.name,
             email: user.email,
             plan: user.plan,
+            repliesLimit: user.repliesLimit,
+            repliesUsed: user.repliesUsed || 0,
             token: generateToken(user._id),
         };
     } catch (error) {

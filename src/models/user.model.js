@@ -60,6 +60,10 @@ const userSchema = mongoose.Schema(
         verificationOtpExpires: {
             type: Date,
         },
+        repliesLimit: {
+            type: Number,
+            default: 50 // Free tier starts with 50
+        },
         isVerified: {
             type: Boolean,
             default: false,
