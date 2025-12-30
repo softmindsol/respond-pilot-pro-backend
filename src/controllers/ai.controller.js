@@ -27,7 +27,7 @@ const PLANS = {
     FREE: 'Free',
     BASIC: 'Basic',
     PRO: 'Pro',
-    PRO_PLUS: 'ProPlus'
+    PRO_PLUS: 'PRO_PLUS'
 };
 
 const PRESET_TONES = {

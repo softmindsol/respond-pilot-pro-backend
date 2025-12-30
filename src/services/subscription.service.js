@@ -26,17 +26,18 @@ const PLAN_PRICES = {
 // 1. Create Checkout Session
 export const createCheckoutSession = async (user, planType) => {
     if (!stripe) throw new Error("Stripe is not configured set STRIPE_SECRET_KEY");
-
+    console.log("planType:", planType)
     // Case insensitive match
     const normalizedPlanType = Object.keys(PLAN_PRICES).find(key => key.toLowerCase() === planType.toLowerCase());
 
+    console.log("normalizedPlanType:", normalizedPlanType)
     // Free is automatic
     if (planType.toLowerCase() === 'free') {
         return null;
     }
 
     if (!normalizedPlanType) {
-        throw new Error(`Invalid plan type: ${planType}. Valid options are Basic, Pro, ProPlus, TopUp.`);
+        throw new Error(`Invalid plan type: ${planType}. Valid options are Basic, Pro, pro_plus, TopUp.`);
     }
 
     const priceId = PLAN_PRICES[normalizedPlanType];
@@ -114,23 +115,13 @@ const handleCheckoutCompleted = async (session) => {
 
     if (creditsToAdd > 0) {
         // If it's a main PLAN (Basic, Pro, etc), reset usage to GIVE FRESH START.
-        // User asked: "pichly replyies reset hojaengy" (previous replies reset).
-        if (planType !== 'TopUp') {
+        // And Set Limit to that plan's limit (wipe old limit).
+        if (planType !== 'TOP_UP') {
             user.plan = planType;
             user.repliesUsed = 0; // RESET USAGE
-            // Logic: You bought a "Pro" pack. It gives you 5000 credits.
-            // Do we ADD 5000 to existing 50? Or Reset limit to 5000?
-            // "Stacking" (Limit += 5000) is safest to avoid losing previous credits.
-            // Resetting usage (Used = 0) effectively gives them full credit capacity back if we assume limit stays.
-
-            // Wait, if I have 40/50 used.
-            // Buy Basic (+1000). Limit -> 1050.
-            // If repliesUsed = 0. Usage -> 0/1050.
-            // This effectively "refunds" the 40 used previously. This is generous and likely what user wants by "reset".
-
-            user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
+            user.repliesLimit = creditsToAdd; // SET NEW LIMIT
         } else {
-            // TopUp: Just ADD credits. Dont reset usage history, just give more room.
+            // TopUp: Just ADD credits. Dont reset usage history.
             user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
         }
 
