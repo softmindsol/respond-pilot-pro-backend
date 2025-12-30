@@ -113,6 +113,7 @@ const getProfile = async (req, res) => {
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
             isVerified: user.isVerified,
+            tone: user.tone,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         });
@@ -121,4 +122,19 @@ const getProfile = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile };
+const updateToneSettings = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { tone } = req.body;
+
+        const result = await authService.updateToneSettings(userId, {
+            tone
+        });
+
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings };

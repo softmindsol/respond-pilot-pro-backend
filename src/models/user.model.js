@@ -64,6 +64,10 @@ const userSchema = mongoose.Schema(
             type: Number,
             default: 50 // Free tier starts with 50
         },
+        tone: {
+            type: String, // Stores Custom Tone Description OR Persona Instruction
+            default: null
+        },
         isVerified: {
             type: Boolean,
             default: false,

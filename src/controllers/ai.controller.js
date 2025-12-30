@@ -40,23 +40,30 @@ const PRESET_TONES = {
 };
 
 // Access Control Logic
-const checkPlanPermissions = (userPlan, requestedTone, customToneDescription, personaInstruction) => {
+// Access Control Logic
+const checkPlanPermissions = (userPlan, requestedTone, userCustomTone) => {
     const plan = userPlan || PLANS.FREE;
     const toneKey = (requestedTone || '').toLowerCase();
 
-    // 1. Check Persona Access (ProPlus Only)
-    if (personaInstruction && plan !== PLANS.PRO_PLUS) {
-        throw { message: 'Advanced Persona Instructions are only available on the Pro Plus plan.', code: STATUS_CODES.FORBIDDEN };
-    }
+    // If user provided a custom "Style/Persona" in their settings (saved in user.tone)
+    // We only allow it effectively if they are Pro+.
+    // Actually, user said "tone field me store krni hai". 
+    // AND "frontend me jesi mirza ae to tmne just store krni hai".
+    // This implies the storage part is handled. 
+    // USAGE part: If they want to USE that stored tone, they likely send a flag or we check it?
+    // Let's assume if they send "custom" as tone, or if we use the stored one.
 
-    // 2. Check Custom Tone Description Access (Pro & ProPlus)
-    if (customToneDescription) {
-        if (plan !== PLANS.PRO && plan !== PLANS.PRO_PLUS) {
-            throw { message: 'Custom Tone Descriptions are available on Pro and Pro Plus plans.', code: STATUS_CODES.FORBIDDEN };
-        }
-    }
+    // Re-reading: "use tone field in model".
 
-    // 3. Check Standard Tone Access
+    // 1. Check Custom Tone Access (Pro & ProPlus)
+    // If they are trying to use a Custom Tone (which might be passed or stored)
+    // For now, let's keep simple checks on the 'requestedTone' string if it matches a preset.
+};
+
+const validateAccess = (user, requestedTone) => {
+    const plan = user.plan || PLANS.FREE;
+    const toneKey = (requestedTone || '').toLowerCase();
+
     // Free: Friendly Only
     if (plan === PLANS.FREE) {
         if (toneKey !== PRESET_TONES.FRIENDLY.toLowerCase()) {
@@ -72,30 +79,27 @@ const checkPlanPermissions = (userPlan, requestedTone, customToneDescription, pe
         }
     }
 
-    // Pro & Above: All Presets are allowed.
+    // Pro/ProPlus: All tones allowed.
 };
 
 
 const generateReplyPrompt = ({
     commentText,
     tone,
-    customToneDescription,
-    personaInstruction,
+    customTone, // This comes from user.tone
     videoTitle,
     authorName
 }) => {
     // Base Identity
     let identity = `You are a professional YouTube Creator.`;
 
-    // Override Identity if Persona is present (Pro Plus)
-    if (personaInstruction) {
-        identity = `You are a specific persona defined as follows: "${personaInstruction}". Act strictly according to this persona.`;
-    }
-
     // Determine specific tone instruction
+    // If 'tone' param is 'Custom', use the user.tone string.
     let toneInstruction = `Tone: ${tone || 'Professional & Engaging'}`;
-    if (customToneDescription) {
-        toneInstruction = `Tone/Style: ${customToneDescription}`; // Pro/ProPlus custom override
+
+    // If they selected 'Custom' (or logic allows it) and have a custom tone saved:
+    if (customTone && tone === 'Custom') {
+        toneInstruction = `Tone/Style/Persona: ${customTone}`;
     }
 
     return `${identity}
@@ -122,8 +126,6 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         commentText,
         comment,
         tone,
-        customToneDescription,
-        personaInstruction,
         videoTitle,
         authorName
     } = req.body;
@@ -158,7 +160,13 @@ export const generateReply = asyncHandler(async (req, res, next) => {
 
     // 2. VALIDATE PERMISSIONS
     try {
-        checkPlanPermissions(user.plan, requestedTone, customToneDescription, personaInstruction);
+        validateAccess(user, requestedTone);
+        // Custom Tone check: If requesting 'Custom' tone, must be Pro/ProPlus
+        if (requestedTone === 'Custom') {
+            if (user.plan !== PLANS.PRO && user.plan !== PLANS.PRO_PLUS) {
+                throw { message: 'Custom Tone is available on Pro or Pro Plus plans.', code: STATUS_CODES.FORBIDDEN };
+            }
+        }
     } catch (permError) {
         return handleError(next, permError.message, permError.code || 403);
     }
@@ -167,8 +175,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         const prompt = generateReplyPrompt({
             commentText: actualComment,
             tone: requestedTone,
-            customToneDescription,
-            personaInstruction,
+            customTone: user.tone, // Pass stored custom tone
             videoTitle,
             authorName
         });

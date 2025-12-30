@@ -76,6 +76,7 @@ const login = async ({ email, password }) => {
             plan: user.plan,
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,
+            tone: user.tone,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
@@ -116,6 +117,7 @@ const googleLogin = async (idToken) => {
             plan: user.plan,
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,
+            tone: user.tone,
             token: generateToken(user._id),
         };
     } catch (error) {
@@ -311,6 +313,24 @@ const resendVerificationOtp = async (email) => {
     }
 };
 
+const updateToneSettings = async (userId, { tone }) => {
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (tone !== undefined) {
+        user.tone = tone;
+    }
+
+    await user.save();
+
+    return {
+        message: 'Tone settings updated',
+        tone: user.tone // Return single field
+    };
+};
+
 export default {
     register,
     login,
@@ -319,5 +339,6 @@ export default {
     verifyOtp,
     resetPassword,
     verifyEmailOtp,
-    resendVerificationOtp
+    resendVerificationOtp,
+    updateToneSettings
 };
