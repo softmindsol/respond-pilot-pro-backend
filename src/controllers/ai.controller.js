@@ -30,76 +30,77 @@ const PLANS = {
     PRO_PLUS: 'PRO_PLUS'
 };
 
-const PRESET_TONES = {
-    FRIENDLY: 'Friendly',
-    PROFESSIONAL: 'Professional',
-    ENGAGING: 'Engaging',
-    GRATEFUL: 'Grateful',
-    HUMOROUS: 'Humorous',
-    EMPATHETIC: 'Empathetic'
+const TONE_TYPES = {
+    FRIENDLY: 'friendly',
+    FACTUAL: 'factual',
+    HAPPY: 'happy',
+    PROFESSIONAL: 'professional',
+    ADVANCED_PERSONA: 'advanced_persona',
+    CUSTOM: 'custom'
 };
 
-// Access Control Logic
-// Access Control Logic
-const checkPlanPermissions = (userPlan, requestedTone, userCustomTone) => {
-    const plan = userPlan || PLANS.FREE;
-    const toneKey = (requestedTone || '').toLowerCase();
-
-    // If user provided a custom "Style/Persona" in their settings (saved in user.tone)
-    // We only allow it effectively if they are Pro+.
-    // Actually, user said "tone field me store krni hai". 
-    // AND "frontend me jesi mirza ae to tmne just store krni hai".
-    // This implies the storage part is handled. 
-    // USAGE part: If they want to USE that stored tone, they likely send a flag or we check it?
-    // Let's assume if they send "custom" as tone, or if we use the stored one.
-
-    // Re-reading: "use tone field in model".
-
-    // 1. Check Custom Tone Access (Pro & ProPlus)
-    // If they are trying to use a Custom Tone (which might be passed or stored)
-    // For now, let's keep simple checks on the 'requestedTone' string if it matches a preset.
+// Prompt Definitions
+const TONE_INSTRUCTIONS = {
+    [TONE_TYPES.FRIENDLY]: "Tone: Friendly, approachable, and uses casual language with a few emojis like 😊 or 👍.",
+    [TONE_TYPES.PROFESSIONAL]: "Tone: Strictly professional, concise, and polite. Do not use emojis or slang.",
+    [TONE_TYPES.HAPPY]: "Tone: High energy, very enthusiastic! Use exclamation marks and hype emojis like 🔥 and 🚀.",
+    [TONE_TYPES.FACTUAL]: "Tone: Direct, objective, and focuses on facts. No fluff or emotion.",
 };
 
-const validateAccess = (user, requestedTone) => {
+const validateAccess = (user, toneType) => {
     const plan = user.plan || PLANS.FREE;
-    const toneKey = (requestedTone || '').toLowerCase();
 
-    // Free: Friendly Only
     if (plan === PLANS.FREE) {
-        if (toneKey !== PRESET_TONES.FRIENDLY.toLowerCase()) {
-            throw { message: `Free plan only supports '${PRESET_TONES.FRIENDLY}' tone. Upgrade to unlock more.`, code: STATUS_CODES.FORBIDDEN };
+        if (toneType !== TONE_TYPES.FRIENDLY) {
+            throw { message: `Free plan only supports 'Friendly' tone. Upgrade to unlock more.`, code: STATUS_CODES.FORBIDDEN };
         }
     }
 
-    // Basic: Friendly & Professional
     if (plan === PLANS.BASIC) {
-        const allowed = [PRESET_TONES.FRIENDLY.toLowerCase(), PRESET_TONES.PROFESSIONAL.toLowerCase()];
-        if (!allowed.includes(toneKey)) {
-            throw { message: `Basic plan only supports Friendly and Professional tones. Upgrade to Pro for more.`, code: STATUS_CODES.FORBIDDEN };
+        if (toneType === TONE_TYPES.CUSTOM || toneType === TONE_TYPES.ADVANCED_PERSONA) {
+            throw { message: `Custom, and Advanced Persona tones are for Pro users.`, code: STATUS_CODES.FORBIDDEN };
         }
     }
 
-    // Pro/ProPlus: All tones allowed.
+    if (plan === PLANS.PRO) {
+        if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
+            throw { message: `Advanced Persona is for Pro Plus users.`, code: STATUS_CODES.FORBIDDEN };
+        }
+    }
+
+    // Pro Plus: All Allowed
 };
 
 
 const generateReplyPrompt = ({
     commentText,
-    tone,
-    customTone, // This comes from user.tone
+    toneType,
+    userTone, // The content of user.tone (e.g., custom description or persona instruction)
     videoTitle,
     authorName
 }) => {
     // Base Identity
     let identity = `You are a professional YouTube Creator.`;
+    let toneInstruction = "";
 
-    // Determine specific tone instruction
-    // If 'tone' param is 'Custom', use the user.tone string.
-    let toneInstruction = `Tone: ${tone || 'Professional & Engaging'}`;
-
-    // If they selected 'Custom' (or logic allows it) and have a custom tone saved:
-    if (customTone && tone === 'Custom') {
-        toneInstruction = `Tone/Style/Persona: ${customTone}`;
+    // Determine instruction based on toneType
+    if (TONE_INSTRUCTIONS[toneType]) {
+        // Standard Tone
+        toneInstruction = TONE_INSTRUCTIONS[toneType];
+    } else if (toneType === TONE_TYPES.CUSTOM) {
+        // Custom Tone (Short & Simple)
+        toneInstruction = `Tone: ${userTone || 'Professional & Engaging'}`;
+    } else if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
+        // Advanced Persona (Detailed)
+        if (userTone) {
+            identity = ""; // Clear base identity as persona likely covers it
+            toneInstruction = userTone;
+        } else {
+            toneInstruction = "Tone: Professional";
+        }
+    } else {
+        // Fallback
+        toneInstruction = TONE_INSTRUCTIONS[TONE_TYPES.FRIENDLY];
     }
 
     return `${identity}
@@ -114,7 +115,6 @@ const generateReplyPrompt = ({
     
     Requirements:
     - Keep it concise (under 500 characters).
-    - Be friendly and encouraging (unless persona dictates otherwise).
     - If the user asks a question, answer it briefly or thank them.
     - Do not include hashtags unless asked.
     - Output ONLY the reply text, no quotes.`;
@@ -130,6 +130,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         authorName
     } = req.body;
 
+    console.log(req.body);
     const user = req.user; // From protect middleware
 
     const actualComment = commentText || comment;
@@ -143,7 +144,6 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 
     // 1. CHECK USAGE LIMIT
-    // Use DATABASE FIELD (repliesLimit) instead of hardcoded map
     const limit = user.repliesLimit || 0;
     const used = user.repliesUsed || 0;
 
@@ -155,27 +155,34 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         );
     }
 
-    // Default tone if missing
-    const requestedTone = tone || PRESET_TONES.FRIENDLY;
+    // Default tone normalization
+    let requestedToneType = (tone || 'friendly').toLowerCase();
+
+    // Normalize old UI values if needed
+    if (requestedToneType === 'engaging') requestedToneType = 'happy';
+    if (requestedToneType === 'grateful') requestedToneType = 'friendly';
+    if (requestedToneType === 'humorous') requestedToneType = 'friendly';
+    if (requestedToneType === 'empathetic') requestedToneType = 'friendly';
+
+    if (!Object.values(TONE_TYPES).includes(requestedToneType)) {
+        if (!['friendly', 'factual', 'happy', 'professional', 'advanced_persona', 'custom'].includes(requestedToneType)) {
+            requestedToneType = 'friendly';
+        }
+    }
 
     // 2. VALIDATE PERMISSIONS
     try {
-        validateAccess(user, requestedTone);
-        // Custom Tone check: If requesting 'Custom' tone, must be Pro/ProPlus
-        if (requestedTone === 'Custom') {
-            if (user.plan !== PLANS.PRO && user.plan !== PLANS.PRO_PLUS) {
-                throw { message: 'Custom Tone is available on Pro or Pro Plus plans.', code: STATUS_CODES.FORBIDDEN };
-            }
-        }
+        validateAccess(user, requestedToneType);
     } catch (permError) {
         return handleError(next, permError.message, permError.code || 403);
     }
 
     try {
+        // 3. GENERATE PROMPT
         const prompt = generateReplyPrompt({
             commentText: actualComment,
-            tone: requestedTone,
-            customTone: user.tone, // Pass stored custom tone
+            toneType: requestedToneType,
+            userTone: user.tone, // Pass stored custom tone/persona
             videoTitle,
             authorName
         });
@@ -187,12 +194,10 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             maxTokens: 500
         });
 
-        // 3. INCREMENT USAGE
-        // We do this after successful generation
+        // 4. INCREMENT USAGE
         user.repliesUsed = (user.repliesUsed || 0) + 1;
-        await user.save(); // Save to DB
+        await user.save();
 
-        // Simple JSON Response
         res.json({
             reply: replyText,
             success: true,

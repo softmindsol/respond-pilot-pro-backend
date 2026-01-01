@@ -26,11 +26,9 @@ const PLAN_PRICES = {
 // 1. Create Checkout Session
 export const createCheckoutSession = async (user, planType) => {
     if (!stripe) throw new Error("Stripe is not configured set STRIPE_SECRET_KEY");
-    console.log("planType:", planType)
     // Case insensitive match
     const normalizedPlanType = Object.keys(PLAN_PRICES).find(key => key.toLowerCase() === planType.toLowerCase());
 
-    console.log("normalizedPlanType:", normalizedPlanType)
     // Free is automatic
     if (planType.toLowerCase() === 'free') {
         return null;

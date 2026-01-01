@@ -114,6 +114,7 @@ const getProfile = async (req, res) => {
             youtubeChannelId: user.youtubeChannelId,
             isVerified: user.isVerified,
             tone: user.tone,
+            toneType: user.toneType,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         });
@@ -125,10 +126,11 @@ const getProfile = async (req, res) => {
 const updateToneSettings = async (req, res) => {
     try {
         const userId = req.user._id;
-        const { tone } = req.body;
+        const { tone, toneType } = req.body;
 
         const result = await authService.updateToneSettings(userId, {
-            tone
+            tone,
+            toneType
         });
 
         res.json(result);

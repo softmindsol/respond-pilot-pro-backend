@@ -106,11 +106,10 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
                 replyCount: item.snippet.totalReplyCount,
                 canReply: item.snippet.canReply,
                 // videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}` // Direct link to comment
-                videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}` 
+                videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}`
 
             };
         });
-        console.log("comments:",comments)
         return {
             comments,
             nextPageToken: response.data.nextPageToken,
@@ -215,5 +214,5 @@ export default {
     getChannelComments,
     getChannelVideos,
     postReplyToComment
-    
+
 };

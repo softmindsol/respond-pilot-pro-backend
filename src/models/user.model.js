@@ -68,6 +68,11 @@ const userSchema = mongoose.Schema(
             type: String, // Stores Custom Tone Description OR Persona Instruction
             default: null
         },
+        toneType: {
+            type: String,
+            enum: ['friendly', 'factual', 'happy', 'professional', 'advanced_persona', 'custom'],
+            default: 'friendly'
+        },
         isVerified: {
             type: Boolean,
             default: false,

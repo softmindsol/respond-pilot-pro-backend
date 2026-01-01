@@ -77,6 +77,7 @@ const login = async ({ email, password }) => {
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,
             tone: user.tone,
+            toneType: user.toneType,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
@@ -118,6 +119,7 @@ const googleLogin = async (idToken) => {
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,
             tone: user.tone,
+            toneType: user.toneType,
             token: generateToken(user._id),
         };
     } catch (error) {
@@ -313,7 +315,7 @@ const resendVerificationOtp = async (email) => {
     }
 };
 
-const updateToneSettings = async (userId, { tone }) => {
+const updateToneSettings = async (userId, { tone, toneType }) => {
     const user = await User.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -323,11 +325,16 @@ const updateToneSettings = async (userId, { tone }) => {
         user.tone = tone;
     }
 
+    if (toneType !== undefined) {
+        user.toneType = toneType;
+    }
+
     await user.save();
 
     return {
         message: 'Tone settings updated',
-        tone: user.tone // Return single field
+        tone: user.tone, // Return single field
+        toneType: user.toneType
     };
 };
 
