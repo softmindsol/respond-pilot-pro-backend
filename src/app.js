@@ -4,7 +4,6 @@ import morgan from 'morgan';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import connectDB from './config/db.js';
-// We will create this file next, but importing it now is fine as long as we create it before running.
 import routes from './routes/index.js';
 
 dotenv.config();
@@ -13,33 +12,60 @@ connectDB();
 
 const app = express();
 
-// Webhook route needs RAW body, so skip JSON parsing for it
+// --- DEBUGGING MIDDLEWARE ---
 app.use((req, res, next) => {
-    if (req.originalUrl === '/api/subscription/webhook') {
+    console.log(`[${req.method}] ${req.url}`);
+    console.log(`   Content-Type: ${req.headers['content-type']}`);
+    next();
+});
+
+// --- CORS Configuration ---
+app.use(cors({
+    origin: "http://localhost:5173", // Frontend URL
+    credentials: true
+}));
+
+// Serve Uploads Folder
+app.use('/uploads', express.static('uploads'));
+
+// --- BODY PARSERS (THE FIX) ---
+
+// 1. JSON Parser (Webhook ko exclude karne ka sahi tareeqa)
+app.use((req, res, next) => {
+    if (req.originalUrl.includes('/api/subscription/webhook')) {
+        // Stripe Webhook ke liye raw body chahiye, isliye JSON parse skip karein
         next();
     } else {
+        // Baaki tamam routes ke liye JSON parse karein
         express.json()(req, res, next);
     }
 });
+
+// 2. URL Encoded Parser (Alag se lagayen)
+app.use(express.urlencoded({ extended: true }));
+
+// 3. Cookie Parser
 app.use(cookieParser());
-// app.use(cors());
 
-app.use(cors({
-    origin: "http://localhost:5173", // Apne Frontend ka URL likhein
-    credentials: true // Agar cookies use kar rahe hain
-}));
+// 4. Safety: Ensure req.body exists (fixes infinite loop or crash if body parser skipped)
+app.use((req, res, next) => {
+    if (!req.body) req.body = {};
+    next();
+});
 
+// --- LOGGING ---
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));
 }
 
+// --- ROUTES ---
 app.get('/', (req, res) => {
     res.send('API is running...');
 });
 
 app.use('/api', routes);
 
-// Error Handling Middleware
+// --- ERROR HANDLING ---
 app.use((err, req, res, next) => {
     const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
     res.status(statusCode).json({

@@ -60,6 +60,14 @@ const userSchema = mongoose.Schema(
         verificationOtpExpires: {
             type: Date,
         },
+        profileImage: {
+            type: String,
+            default: null
+        },
+        phoneNumber: {
+            type: String,
+            default: null
+        },
         repliesLimit: {
             type: Number,
             default: 50 // Free tier starts with 50

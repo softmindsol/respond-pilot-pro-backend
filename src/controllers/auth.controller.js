@@ -104,6 +104,8 @@ const getProfile = async (req, res) => {
             _id: user._id,
             name: user.name,
             email: user.email,
+            profileImage: user.profileImage,
+            phoneNumber: user.phoneNumber,
             repliesUsed: user.repliesUsed,
             isGoogleAuth: user.isGoogleAuth,
             plan: user.plan,
@@ -139,4 +141,34 @@ const updateToneSettings = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings };
+const updateUserProfile = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        let { name, profileImage, phoneNumber } = req.body;
+
+        // If file was uploaded by multer, use its path
+        if (req.file) {
+            // Converts 'uploads\filename.jpg' -> '/uploads/filename.jpg'
+            // Ensure your backend URL is prefixed on frontend or return full URL here if env available
+            const filePath = req.file.path.replace(/\\/g, "/");
+            // If you want relative path:
+            profileImage = `/${filePath}`;
+
+            // OR if you want full URL (better for frontend):
+            // const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+            // profileImage = `${baseUrl}/${filePath}`;
+        }
+
+        const result = await authService.updateUserProfile(userId, {
+            name,
+            profileImage,
+            phoneNumber
+        });
+
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile };

@@ -78,6 +78,8 @@ const login = async ({ email, password }) => {
             repliesUsed: user.repliesUsed || 0,
             tone: user.tone,
             toneType: user.toneType,
+            profileImage: user.profileImage,
+            phoneNumber: user.phoneNumber,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
@@ -120,6 +122,8 @@ const googleLogin = async (idToken) => {
             repliesUsed: user.repliesUsed || 0,
             tone: user.tone,
             toneType: user.toneType,
+            profileImage: user.profileImage,
+            phoneNumber: user.phoneNumber,
             token: generateToken(user._id),
         };
     } catch (error) {
@@ -338,6 +342,29 @@ const updateToneSettings = async (userId, { tone, toneType }) => {
     };
 };
 
+const updateUserProfile = async (userId, data) => {
+    const user = await User.findById(userId);
+
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (data.name) user.name = data.name;
+    if (data.profileImage) user.profileImage = data.profileImage;
+    if (data.phoneNumber) user.phoneNumber = data.phoneNumber;
+
+    await user.save();
+
+    return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phoneNumber: user.phoneNumber,
+        message: 'Profile updated successfully'
+    };
+};
+
 export default {
     register,
     login,
@@ -347,5 +374,6 @@ export default {
     resetPassword,
     verifyEmailOtp,
     resendVerificationOtp,
-    updateToneSettings
+    updateToneSettings,
+    updateUserProfile
 };
