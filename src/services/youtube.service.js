@@ -75,7 +75,7 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
     try {
         // 3. Request Parameters banayein
         const requestParams = {
-            part: 'snippet',
+            part: 'snippet,replies',
             maxResults: 20,
             pageToken: pageToken || undefined,
             order: 'time', // Latest comments pehle
@@ -95,6 +95,19 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
         // 5. Data Clean Karna
         const comments = response.data.items.map(item => {
             const topComment = item.snippet.topLevelComment.snippet;
+            // 🔥 CHANGE 2: Replies Extract karna
+            let replies = [];
+            if (item.replies && item.replies.comments) {
+                // Replies ko sort karein (Oldest first achay lagte hain thread mein)
+                replies = item.replies.comments.map(reply => ({
+                    id: reply.id,
+                    author: reply.snippet.authorDisplayName,
+                    authorImage: reply.snippet.authorProfileImageUrl,
+                    text: reply.snippet.textDisplay,
+                    publishedAt: reply.snippet.publishedAt,
+                    isOwner: reply.snippet.authorChannelId.value === user.youtubeChannelId // Check agar ye apka reply hai
+                })).reverse(); // Reverse taake purane pehle dikhen
+            }
             return {
                 id: item.id, // Comment ID (Reply karne ke liye ye chahiye hoga)
                 video_id: topComment.videoId, // Kis video par comment aya
@@ -106,7 +119,8 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
                 replyCount: item.snippet.totalReplyCount,
                 canReply: item.snippet.canReply,
                 // videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}` // Direct link to comment
-                videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}`
+                videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}`,
+                replies: replies
 
             };
         });
@@ -168,7 +182,11 @@ const getChannelVideos = async (userId, pageToken = '') => {
 
     } catch (error) {
         console.error('YouTube Videos API Error:', error.message);
-        throw new Error('Failed to fetch videos.');
+        await User.findByIdAndUpdate(userId, {
+            isConnectedToYoutube: false,
+            youtubeRefreshToken: null
+        });
+        throw new Error('Session expired. Please reconnect your YouTube channel.');
     }
 };
 
@@ -178,6 +196,11 @@ const postReplyToComment = async (userId, commentId, replyText) => {
 
     if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
         throw new Error('User is not connected to YouTube.');
+    }
+
+    // CHECK LIMIT
+    if (user.repliesUsed >= user.repliesLimit) {
+        throw new Error('You have reached your reply limit. Please upgrade your plan.');
     }
 
     // 2. Auth Credentials set karein
@@ -200,7 +223,15 @@ const postReplyToComment = async (userId, commentId, replyText) => {
             }
         });
 
-        return response.data;
+        // 4. Increment Count & Save
+        user.repliesUsed += 1;
+        await user.save();
+
+        return {
+            ...response.data,
+            repliesUsed: user.repliesUsed, // Frontend ko update bhejne ke liye
+            repliesLimit: user.repliesLimit
+        };
 
     } catch (error) {
         console.error('YouTube Post Reply Error:', error.message);

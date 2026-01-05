@@ -365,6 +365,23 @@ const updateUserProfile = async (userId, data) => {
     };
 };
 
+const updatePassword = async (userId, { currentPassword, newPassword }) => {
+    const user = await User.findById(userId);
+
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (!(await user.matchPassword(currentPassword))) {
+        throw new Error('Invalid current password');
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return { message: 'Password updated successfully' };
+};
+
 export default {
     register,
     login,
@@ -375,5 +392,6 @@ export default {
     verifyEmailOtp,
     resendVerificationOtp,
     updateToneSettings,
-    updateUserProfile
+    updateUserProfile,
+    updatePassword
 };

@@ -1,35 +1,37 @@
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import config from '../config/index.js';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const apiKey = process.env.GEMINI_API_KEY || config.geminiApiKey;
+const genAI = new GoogleGenerativeAI(apiKey);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-const generateReply = async (commentText, tone = 'professional') => {
+const generateReply = async (commentText, systemInstruction) => {
     try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Ya gpt-3.5-turbo (Sasta aur tez)
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a helpful YouTube creator assistant. 
-                    Your goal is to reply to user comments. 
-                    Tone: ${tone}. 
-                    Keep the reply concise, engaging, and under 280 characters.`
-                },
-                {
-                    role: "user",
-                    content: `Here is the viewer's comment: "${commentText}". Write a reply.`
-                }
-            ],
-        });
+        // 🔥 UPDATE: Prompt Engineering for Context
+        const prompt = `
+        You are a YouTube Creator's assistant. 
+        
+        ${systemInstruction}
 
-        return completion.choices[0].message.content;
+        --- INPUT COMMENT / CONTEXT ---
+        ${commentText}
+        -------------------------------
+
+        **Instructions:**
+        1. If the input contains [CONTEXT START], analyze the thread.
+        2. Reply ONLY to the last person mentioned in the context.
+        3. Keep the reply relevant to the Main Comment's topic.
+        4. Do NOT start with "Here is a reply" or quotes. Just write the reply.
+        5. Keep it under 280 characters.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
     } catch (error) {
-        console.error('OpenAI Error:', error);
+        console.error('Gemini Error:', error);
         throw new Error('Failed to generate AI reply');
     }
 };
 
-export default {
-    generateReply
-};
+export default { generateReply };

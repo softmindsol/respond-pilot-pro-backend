@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile } from '../controllers/auth.controller.js';
+import { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
 
@@ -15,5 +15,6 @@ router.post('/resend-verification', resendVerificationOtp);
 router.get('/profile', protect, getProfile);
 router.put('/update-tone-settings', protect, updateToneSettings);
 router.put('/update-profile', protect, upload.single('profileImage'), updateUserProfile);
+router.put('/update-password', protect, updatePassword);
 
 export default router;

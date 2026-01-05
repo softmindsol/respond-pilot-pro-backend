@@ -195,7 +195,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         });
 
         // 4. INCREMENT USAGE
-        user.repliesUsed = (user.repliesUsed || 0) + 1;
+        // user.repliesUsed = (user.repliesUsed || 0) + 1;
         await user.save();
 
         res.json({

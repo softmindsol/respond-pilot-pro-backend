@@ -39,8 +39,12 @@ const getComments = async (req, res) => {
 
         // Service ko videoId pass karein
         const data = await youtubeService.getChannelComments(req.user._id, pageToken, videoId);
-
-        res.json(data);
+        res.json({
+            comments: data.comments,
+            nextPageToken: data.nextPageToken, // <--- YE ZAROORI HAI
+            pageInfo: data.pageInfo
+        });
+    
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -51,6 +55,7 @@ const getVideos = async (req, res) => {
         const data = await youtubeService.getChannelVideos(req.user._id, pageToken);
         res.json(data);
     } catch (error) {
+        console.log(error);
         res.status(500).json({ message: error.message });
     }
 };
