@@ -7,7 +7,8 @@ export async function llmClient({
     model = 'gemini-2.5-flash',
     prompt,
     temperature = 0.7,
-    maxTokens = 800
+    maxTokens = 800,
+    responseMimeType = 'text/plain'
 }) {
     if (!genAI) {
         if (!process.env.GEMINI_API_KEY) {
@@ -22,6 +23,7 @@ export async function llmClient({
             generationConfig: {
                 temperature,
                 maxOutputTokens: maxTokens,
+                responseMimeType
             }
         });
 

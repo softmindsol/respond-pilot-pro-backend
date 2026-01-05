@@ -1,3 +1,4 @@
+import User from '../models/user.model.js';
 import youtubeService from '../services/youtube.service.js';
 
 const getAuthUrl = (req, res) => {
@@ -62,12 +63,28 @@ const getVideos = async (req, res) => {
 const postReply = async (req, res) => {
     try {
         const { commentId, commentText } = req.body;
+        const user = req.user; // User from middleware
+
         if (!commentId || !commentText) {
             return res.status(400).json({ message: 'Comment ID and reply text are required.' });
         }
 
-        const data = await youtubeService.postReplyToComment(req.user._id, commentId, commentText);
-        res.json(data);
+        const data = await youtubeService.postReplyToComment(user._id, commentId, commentText);
+
+        // user.repliesUsed = (user.repliesUsed || 0) + 1;
+        // await user.save();
+        const updatedUser = await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { repliesUsed: 1 } }, // Increase by 1
+            { new: true } // Humein updated user wapis chahiye
+        );
+        res.json({
+            ...data, 
+            usage: {
+                // Frontend ko updated count bhejen taake UI foran update ho
+                repliesUsed: updatedUser.repliesUsed
+            }
+});
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

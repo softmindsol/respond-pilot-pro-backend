@@ -73,135 +73,166 @@ const validateAccess = (user, toneType) => {
 
 
 const generateReplyPrompt = ({
-    commentText,
+    comment,
     toneType,
-    userTone, // The content of user.tone (e.g., custom description or persona instruction)
+    toneContent,
     videoTitle,
     authorName
 }) => {
-    // Base Identity
-    let identity = `You are a professional YouTube Creator.`;
+    // 1. Base Identity
+    let identity = `You are a professional YouTube Creator's assistant.`;
     let toneInstruction = "";
 
-    // Determine instruction based on toneType
-    if (TONE_INSTRUCTIONS[toneType]) {
-        // Standard Tone
-        toneInstruction = TONE_INSTRUCTIONS[toneType];
+    // 2. Determine Tone Instruction
+    if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
+        identity = ""; // Persona overrides base identity
+        toneInstruction = `Your Persona Instructions: "${toneContent || 'Be helpful.'}"`;
     } else if (toneType === TONE_TYPES.CUSTOM) {
-        // Custom Tone (Short & Simple)
-        toneInstruction = `Tone: ${userTone || 'Professional & Engaging'}`;
-    } else if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
-        // Advanced Persona (Detailed)
-        if (userTone) {
-            identity = ""; // Clear base identity as persona likely covers it
-            toneInstruction = userTone;
-        } else {
-            toneInstruction = "Tone: Professional";
-        }
+        toneInstruction = `Custom Tone Style: "${toneContent || 'Professional and engaging'}"`;
     } else {
-        // Fallback
-        toneInstruction = TONE_INSTRUCTIONS[TONE_TYPES.FRIENDLY];
+        toneInstruction = TONE_INSTRUCTIONS[toneType] || TONE_INSTRUCTIONS.FRIENDLY;
     }
 
-    return `${identity}
-    
-    Your task is to write a reply to a user's comment.
-
-    User Comment: "${commentText}"
-    User Name: ${authorName || 'Viewer'}
-    Video Context: ${videoTitle || 'General Video'}
-    
+    // 3. Build Final Prompt for JSON Output
+    return `
+    ${identity}
     ${toneInstruction}
+
+    Video Context: ${videoTitle || 'General Content'}
+
+    --- INPUT MESSAGE / CONTEXT ---
+    ${comment}
+    -------------------------------
+
+    **TASK:**
+    1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
+    2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty or provide a neutral placeholder.
+
+    **OUTPUT FORMAT (JSON):**
+    {
+        "status": "safe" | "flagged",
+        "reply": "Your generated reply text here (or empty string if flagged)"
+    }
     
-    Requirements:
-    - Keep it concise (under 500 characters).
-    - If the user asks a question, answer it briefly or thank them.
-    - Do not include hashtags unless asked.
-    - Output ONLY the reply text, no quotes.`;
+    **Instructions:**
+    - If the input contains "[CONTEXT START]", reply specifically to the LAST person mentioned.
+    - Output ONLY valid JSON.
+    `;
 };
 
 // NON-STREAMING VERSION
 export const generateReply = asyncHandler(async (req, res, next) => {
     const {
-        commentText,
-        comment,
+        comment: comment,
         tone,
         videoTitle,
-        authorName
+        authorName,
+        draftOnly // New flag to skip usage counting if it's just a draft
     } = req.body;
 
-    console.log(req.body);
-    const user = req.user; // From protect middleware
+    const user = req.user;
 
-    const actualComment = commentText || comment;
-
-    if (isGibberish(actualComment)) {
-        return handleError(
-            next,
-            'Comment text is invalid or too short.',
-            STATUS_CODES.BAD_REQUEST
-        );
+    // Basic validation
+    if (isGibberish(comment)) {
+        return handleError(next, 'Comment text is invalid.', STATUS_CODES.BAD_REQUEST);
     }
 
-    // 1. CHECK USAGE LIMIT
+    // 1. CHECK USAGE LIMIT (Skip check if we just want a draft for the UI to show "AI is writing...")
+    // Ideally, drafts count towards usage ONLY when approved, OR we charge small amount. 
+    // For now, let's count generation as usage to prevent abuse.
     const limit = user.repliesLimit || 0;
     const used = user.repliesUsed || 0;
 
     if (used >= limit) {
-        return handleError(
-            next,
-            `Usage limit reached. You have used ${used}/${limit} replies. Please Top Up or Upgrade to continue.`,
-            STATUS_CODES.FORBIDDEN
-        );
+        return handleError(next, `Usage limit reached (${used}/${limit}). Please Upgrade.`, STATUS_CODES.FORBIDDEN);
     }
 
-    // Default tone normalization
-    let requestedToneType = (tone || 'friendly').toLowerCase();
+    // 2. NORMALIZE TONE
+    let requestedToneType = (tone || user.tone || 'friendly').toLowerCase();
 
-    // Normalize old UI values if needed
-    if (requestedToneType === 'engaging') requestedToneType = 'happy';
-    if (requestedToneType === 'grateful') requestedToneType = 'friendly';
-    if (requestedToneType === 'humorous') requestedToneType = 'friendly';
-    if (requestedToneType === 'empathetic') requestedToneType = 'friendly';
+    const toneMap = {
+        'engaging': 'happy',
+        'grateful': 'friendly',
+        'humorous': 'friendly',
+        'empathetic': 'friendly'
+    };
+    if (toneMap[requestedToneType]) requestedToneType = toneMap[requestedToneType];
 
     if (!Object.values(TONE_TYPES).includes(requestedToneType)) {
-        if (!['friendly', 'factual', 'happy', 'professional', 'advanced_persona', 'custom'].includes(requestedToneType)) {
-            requestedToneType = 'friendly';
-        }
+        requestedToneType = 'friendly';
     }
 
-    // 2. VALIDATE PERMISSIONS
+    // 3. VALIDATE PLAN PERMISSIONS
     try {
         validateAccess(user, requestedToneType);
     } catch (permError) {
         return handleError(next, permError.message, permError.code || 403);
     }
 
+    // 4. EXTRACT TONE CONTENT
+    let toneContent = "";
+    if (requestedToneType === TONE_TYPES.CUSTOM) {
+        toneContent = user.customToneDescription;
+    } else if (requestedToneType === TONE_TYPES.ADVANCED_PERSONA) {
+        toneContent = user.advancedPersonaInstruction;
+    }
+
     try {
-        // 3. GENERATE PROMPT
+        // 5. GENERATE PROMPT
         const prompt = generateReplyPrompt({
-            commentText: actualComment,
+            comment,
             toneType: requestedToneType,
-            userTone: user.tone, // Pass stored custom tone/persona
+            toneContent,
             videoTitle,
             authorName
         });
 
-        const replyText = await llmClient({
+        // 6. CALL LLM (Force JSON output)
+        // Ensure your llmClient or model config supports JSON mode if possible, 
+        // otherwise rely on prompt instruction.
+        const responseText = await llmClient({
             model: 'gemini-2.5-flash',
             prompt,
             temperature: 0.7,
-            maxTokens: 500
+            maxTokens: 1000,
+            responseMimeType: 'application/json'
         });
 
-        // 4. INCREMENT USAGE
+        // 7. PARSE JSON RESPONSE
+        let aiResult;
+        try {
+            // Clean up markdown code blocks if any (just in case, though JSON mode usually avoids them)
+            const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            aiResult = JSON.parse(cleanedText);
+        } catch (e) {
+            console.warn("AI JSON Parse Failed, trying to extract content from malformed JSON:", e);
+            // Robust extraction if JSON is malformed or truncated
+            const statusMatch = responseText.match(/"status":\s*"([^"]+)"/i);
+            const replyMatch = responseText.match(/"reply":\s*"([^"]+)(?:"|$)/i);
+
+            aiResult = {
+                status: statusMatch ? statusMatch[1] : "safe",
+                reply: replyMatch ? replyMatch[1] : responseText.substring(0, 1000)
+            };
+
+            // If the reply still contains JSON structure, it means extraction failed
+            if (aiResult.reply.includes('{"status":') || aiResult.reply.length < 5) {
+                aiResult.reply = "I apologize, but I couldn't generate a complete reply. Please try again.";
+            }
+        }
+
+        // 8. UPDATE USAGE (Only if we are NOT in draft-only mode, or if you want to charge for drafts)
+        // Client requirement says "automated drafting", so this happens A LOT. 
+        // Usually, you might want to only increment `repliesUsed` when they click "Approve". 
+        // But for MVP, let's keep it simple or maybe assume drafts are cheap.
+
         // user.repliesUsed = (user.repliesUsed || 0) + 1;
-        await user.save();
+        // await user.save();
 
         res.json({
-            reply: replyText,
             success: true,
-            planUsed: user.plan,
+            status: aiResult.status || "safe",
+            reply: aiResult.reply,
             usage: {
                 used: user.repliesUsed,
                 limit: limit
@@ -209,10 +240,11 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         });
 
     } catch (err) {
-        console.error("AI Error:", err);
+        console.error("AI Generation Error:", err);
         res.status(500).json({ message: "Failed to generate AI reply" });
     }
 });
+
 
 export default {
     generateReply
