@@ -96,7 +96,12 @@ const userSchema = mongoose.Schema(
         },
         planExpiresAt: {
             type: Date,
-        }
+        },
+        lastVideoSync: {
+            type: Date,
+            default: null
+        },
+
     },
     {
         timestamps: true,

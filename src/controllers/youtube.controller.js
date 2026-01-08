@@ -41,8 +41,10 @@ const getComments = async (req, res) => {
         // Service ko videoId pass karein
         const data = await youtubeService.getChannelComments(req.user._id, pageToken, videoId);
         res.json({
-            comments: data.comments,
-            nextPageToken: data.nextPageToken, // <--- YE ZAROORI HAI
+            comments: data.allComments, // Purani functionality na toote
+            pendingComments: data.pendingComments, // 🔥 New Array for Action Center
+            repliedComments: data.repliedComments, // Optional
+            nextPageToken: data.nextPageToken,
             pageInfo: data.pageInfo
         });
 
@@ -52,8 +54,12 @@ const getComments = async (req, res) => {
 };
 const getVideos = async (req, res) => {
     try {
-        const { pageToken } = req.query;
-        const data = await youtubeService.getChannelVideos(req.user._id, pageToken);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const { pageToken, refresh } = req.query;
+        const forceRefresh = refresh === 'true';
+
+        const data = await youtubeService.getChannelVideos(req.user._id, pageToken, forceRefresh, page,limit);
         res.json(data);
     } catch (error) {
         console.log(error);
@@ -79,12 +85,12 @@ const postReply = async (req, res) => {
             { new: true } // Humein updated user wapis chahiye
         );
         res.json({
-            ...data, 
+            ...data,
             usage: {
                 // Frontend ko updated count bhejen taake UI foran update ho
                 repliesUsed: updatedUser.repliesUsed
             }
-});
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
