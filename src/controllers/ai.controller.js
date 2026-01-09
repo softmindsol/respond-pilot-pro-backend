@@ -84,7 +84,6 @@ const generateReplyPrompt = ({
     let identity = `You are a professional YouTube Creator's assistant.`;
     let toneInstruction = "";
 
-    console.log("userPlan:",userPlan);
     // 2. Determine Tone Instruction
     if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
         identity = ""; // Persona overrides base identity
