@@ -77,12 +77,14 @@ const generateReplyPrompt = ({
     toneType,
     toneContent,
     videoTitle,
-    authorName
+    authorName,
+    userPlan
 }) => {
     // 1. Base Identity
     let identity = `You are a professional YouTube Creator's assistant.`;
     let toneInstruction = "";
 
+    console.log("userPlan:",userPlan);
     // 2. Determine Tone Instruction
     if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
         identity = ""; // Persona overrides base identity
@@ -93,7 +95,18 @@ const generateReplyPrompt = ({
         toneInstruction = TONE_INSTRUCTIONS[toneType] || TONE_INSTRUCTIONS.FRIENDLY;
     }
 
-    // 3. Build Final Prompt for JSON Output
+    // 3. Safety Check Logic based on Plan
+    const isProPlus = userPlan === PLANS.PRO_PLUS;
+
+    const taskInstructions = isProPlus
+        ? `1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
+    2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty or provide a neutral placeholder.`
+        : `1. **Generate Reply:** Start generating the reply immediately based on the provided tone. Do not check for flags status or safety labels. Always set status to "safe".
+    2. **Reply Generation:** Create a relevant, engaging reply to the comment.`;
+
+    const statusInstruction = isProPlus ? `"safe" | "flagged"` : `"safe"`;
+
+    // 4. Build Final Prompt for JSON Output
     return `
     ${identity}
     ${toneInstruction}
@@ -105,13 +118,12 @@ const generateReplyPrompt = ({
     -------------------------------
 
     **TASK:**
-    1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
-    2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty or provide a neutral placeholder.
+    ${taskInstructions}
 
     **OUTPUT FORMAT (JSON):**
     {
-        "status": "safe" | "flagged",
-        "reply": "Your generated reply text here (or empty string if flagged)"
+        "status": ${statusInstruction},
+        "reply": "Your generated reply text here"
     }
     
     **Instructions:**
@@ -179,12 +191,14 @@ export const generateReply = asyncHandler(async (req, res, next) => {
 
     try {
         // 5. GENERATE PROMPT
+        // 5. GENERATE PROMPT
         const prompt = generateReplyPrompt({
             comment,
             toneType: requestedToneType,
             toneContent,
             videoTitle,
-            authorName
+            authorName,
+            userPlan: user.plan || PLANS.FREE
         });
 
         // 6. CALL LLM (Force JSON output)

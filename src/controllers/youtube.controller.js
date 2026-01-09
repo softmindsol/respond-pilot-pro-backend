@@ -55,7 +55,7 @@ const getComments = async (req, res) => {
 const getVideos = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
+        const limit = parseInt(req.query.limit) || 20;
         const { pageToken, refresh } = req.query;
         const forceRefresh = refresh === 'true';
 
