@@ -73,6 +73,7 @@ const login = async ({ email, password }) => {
             _id: user._id,
             name: user.name,
             email: user.email,
+            role: user.role,
             plan: user.plan,
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,

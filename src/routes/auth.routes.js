@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword } from '../controllers/auth.controller.js';
+import { registerUser, loginUser, loginAdmin, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
 
@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/admin/login', loginAdmin);
 router.post('/google', googleAuth);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
