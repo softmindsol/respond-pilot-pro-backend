@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-
+import crypto from 'crypto';
 const userSchema = mongoose.Schema(
     {
         name: {
@@ -11,6 +11,11 @@ const userSchema = mongoose.Schema(
             type: String,
             required: true,
             unique: true,
+        },
+        role: {
+            type: String,
+            enum: ['staff', 'admin'],
+            default: 'staff'
         },
         password: {
             type: String,
@@ -101,6 +106,31 @@ const userSchema = mongoose.Schema(
             type: Date,
             default: null
         },
+        affiliateTier: {
+            type: String,
+            enum: ['none', 'tier1', 'tier2'],
+            default: 'none'
+            // 'tier1' = Founding Partner (30% comm + Free Access)
+            // 'tier2' = Standard Affiliate (15% comm + Paid Access)
+        },
+        referralCode: {
+            type: String,
+            unique: true,
+            sparse: true // Allows nulls to avoid unique errors if not set
+        },
+        referredBy: {
+            type: mongoose.Schema.Types.ObjectId, // Referrer ki ID store karenge
+            ref: 'User',
+            default: null
+        },
+        walletBalance: {
+            type: Number,
+            default: 0
+        },
+        totalEarnings: { // Reporting ke liye
+            type: Number,
+            default: 0
+        }
 
     },
     {
@@ -108,13 +138,22 @@ const userSchema = mongoose.Schema(
     }
 );
 
-userSchema.pre('save', async function (next) {
-    if (!this.isModified('password') || !this.password) {
-        return;
+userSchema.pre('save', async function (req,res,next) {
+    // 1. Password Hash (Existing)
+    if (this.isModified('password') && this.password) {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
     }
 
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    // 2. 🔥 Generate Referral Code if not exists
+    if (!this.referralCode) {
+        // Simple random 6 char code (e.g., 'ab12cd')
+        // Aap chaho to user.name se bhi bana sakte ho
+        const randomCode = crypto.randomBytes(3).toString('hex');
+        this.referralCode = `${this.name ? this.name.split(' ')[0].toLowerCase() : 'user'}-${randomCode}`;
+    }
+
+    // next();
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {

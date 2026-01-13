@@ -115,6 +115,12 @@ const getProfile = async (req, res) => {
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
             isVerified: user.isVerified,
+            role: user.role,
+            affiliateTier: user.affiliateTier,
+            referralCode: user.referralCode,
+            referredBy: user.referredBy,
+            walletBalance: user.walletBalance,
+            totalEarnings: user.totalEarnings,
             tone: user.tone,
             toneType: user.toneType,
             createdAt: user.createdAt,
@@ -191,4 +197,23 @@ const updatePassword = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword };
+const loginAdmin = async (req, res) => {
+    try {
+        const validatedData = loginSchema.parse(req.body);
+        const user = await authService.login(validatedData);
+        console.log(user)
+        if (user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access denied. Admins only.' });
+        }
+
+        res.json(user);
+    } catch (error) {
+        if (error.name === 'ZodError') {
+            res.status(400).json({ message: error.errors });
+        } else {
+            res.status(401).json({ message: error.message });
+        }
+    }
+};
+
+export { registerUser, loginUser, loginAdmin, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword };
