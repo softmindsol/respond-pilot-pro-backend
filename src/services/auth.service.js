@@ -8,12 +8,27 @@ import jwt from 'jsonwebtoken';
 import { verifyEmailTemplate, resetPasswordTemplate } from '../email-template/emailTemplate.js';
 
 const register = async (userData) => {
-    const { name, email, password } = userData;
+    console.log("userData:", userData);
+    const { name, email, password, referredBy } = userData;
 
     const userExists = await User.findOne({ email });
-
+console.log("referredBy:", referredBy);
     if (userExists) {
         throw new Error('User already exists');
+    }
+    let referrerId = null;
+    if (referredBy) {
+        console.log("Searching for referrer with code:", referredBy);
+
+        // Database mein dhoondo ke ye code kiska hai
+        const referrer = await User.findOne({ referralCode: referredBy });
+
+        if (referrer) {
+            referrerId = referrer._id; // Asli User ID mil gayi
+            console.log("Referrer Found:", referrer.name);
+        } else {
+            console.log("Invalid Referral Code");
+        }
     }
 
     // Generate OTP
@@ -27,6 +42,7 @@ const register = async (userData) => {
         name,
         email: email.toLowerCase(),
         password,
+        referredBy: referrerId, // 🔥 Yahan ID save hogi
         verificationOtp: hashedOtp,
         verificationOtpExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
         isVerified: false

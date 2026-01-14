@@ -26,15 +26,12 @@ export const checkSubscription = async (req, res, next) => {
             return next(); 
         }
 
-        // ======================================================
-        // 2. STRIPE SUBSCRIPTION STATUS CHECK
-        // ======================================================
+ 
         // Agar Plan 'Free' NAHI hai, to make sure karein ke subscription active hai.
         if (user.plan !== 'Free') {
             const validStatuses = ['active', 'trialing'];
-            
-            // Note: stripeSubscriptionStatus field Stripe Webhook se update hoti hai
-            if (!user.stripeSubscriptionStatus || !validStatuses.includes(user.stripeSubscriptionStatus)) {
+                       // Note: stripeSubscriptionStatus field Stripe Webhook se update hoti hai
+            if (!user.subscriptionStatus || !validStatuses.includes(user.subscriptionStatus)) {
                 return res.status(403).json({ 
                     message: "Your subscription is inactive or payment failed. Please update payment details.",
                     reason: "inactive_subscription"
@@ -42,9 +39,6 @@ export const checkSubscription = async (req, res, next) => {
             }
         }
 
-        // ======================================================
-        // 3. USAGE LIMIT CHECK
-        // ======================================================
         
         // Current usage
         const used = user.repliesUsed || 0;

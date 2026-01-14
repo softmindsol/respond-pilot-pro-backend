@@ -1,9 +1,10 @@
 import Stripe from 'stripe';
 import User from '../models/user.model.js';
+import Commission from '../models/commission.model.js'; // Import Commission Model
 
 // Initialize Stripe 
 let stripe;
-if (process.env.STRIPE_SECRET_KEY) {
+if (process.env.STRIPE_SECRET_KEY) { 
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
@@ -89,45 +90,85 @@ export const createCustomerPortalSession = async (user) => {
     return session;
 };
 
-// 3. Handle Webhook
+const processAffiliateCommission = async (session) => {
+    const customerEmail = session.customer_details?.email;
+    const amountPaid = session.amount_total / 100; // Cents to Dollars
+    
+    if (!customerEmail || amountPaid <= 0) return;
+
+    console.log(`Checking commission for: ${customerEmail}`);
+
+    const user = await User.findOne({ email: customerEmail });
+    if (!user || !user.referredBy) return;
+
+    const referrer = await User.findById(user.referredBy);
+    if (referrer && referrer.affiliateTier !== 'none') {
+        
+        let rate = referrer.affiliateTier === 'tier1' ? 0.30 : 0.15;
+        const commissionEarned = parseFloat((amountPaid * rate).toFixed(2));
+
+        console.log(`💰 Commission Triggered: $${commissionEarned} for ${referrer.email}`);
+
+        // Update Wallet
+        await User.findByIdAndUpdate(referrer._id, {
+            $inc: { walletBalance: commissionEarned, totalEarnings: commissionEarned }
+        });
+
+        // Record History
+        await Commission.create({
+            affiliateId: referrer._id,
+            referredUserId: user._id,
+            orderAmount: amountPaid,
+            commissionAmount: commissionEarned,
+            commissionRate: rate * 100,
+            tier: referrer.affiliateTier,
+            stripePaymentId: session.payment_intent,
+            status: 'pending'
+        });
+    }
+};
+
+// 🔥 MAIN WEBHOOK HANDLER
 export const handleWebhook = async (event) => {
     if (!stripe) return;
 
     switch (event.type) {
+        // One-Time Payment Success Event
         case 'checkout.session.completed':
-            await handleCheckoutCompleted(event.data.object);
+            const session = event.data.object;
+            
+            // 1. Give Credits to User
+            await handleCheckoutCompleted(session);
+            
+            // 2. Give Commission to Referrer
+            await processAffiliateCommission(session);
             break;
-        // recurring events removed since it's one-time
     }
 };
 
 const handleCheckoutCompleted = async (session) => {
     const userId = session.metadata.userId;
-    const planType = session.metadata.planType; // e.g. 'Basic', 'Pro'
+    const planType = session.metadata.planType;
 
     const user = await User.findById(userId);
     if (!user) return;
 
-    // Credits to add
     const creditsToAdd = PLAN_CREDITS[planType] || 0;
 
     if (creditsToAdd > 0) {
-        // If it's a main PLAN (Basic, Pro, etc), reset usage to GIVE FRESH START.
-        // And Set Limit to that plan's limit (wipe old limit).
         if (planType !== 'TOP_UP') {
             user.plan = planType;
-            user.repliesUsed = 0; // RESET USAGE
-            user.repliesLimit = creditsToAdd; // SET NEW LIMIT
+            user.repliesUsed = 0;
+            user.repliesLimit = creditsToAdd;
         } else {
-            // TopUp: Just ADD credits. Dont reset usage history.
             user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
         }
-
-        user.subscriptionStatus = 'active';
+        user.subscriptionStatus = 'active'; // or whatever you track
     }
-
     await user.save();
 };
+
+
 
 export default {
     createCheckoutSession,

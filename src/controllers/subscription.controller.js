@@ -1,5 +1,6 @@
-import subscriptionService from '../services/subscription.service.js';
 import Stripe from 'stripe';
+import Commission from '../models/commission.model.js';
+import subscriptionService from '../services/subscription.service.js';
 
 const createSession = async (req, res) => {
     try {
@@ -36,6 +37,7 @@ const createCustomerPortal = async (req, res) => {
     }
 };
 
+
 const handleWebhook = async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
@@ -55,6 +57,8 @@ const handleWebhook = async (req, res) => {
         console.error(`Webhook Signature Verification Failed: ${err.message}`);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
+
+       
 
     // Handle event in service
     await subscriptionService.handleWebhook(event);

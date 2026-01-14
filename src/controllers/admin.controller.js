@@ -1,4 +1,6 @@
+import Commission from '../models/commission.model.js';
 import User from '../models/user.model.js';
+import Payout from '../models/payout.model.js';
 
 // 1. Get All Users (With Pagination & Search)
 export const getAllUsers = async (req, res) => {
@@ -64,6 +66,57 @@ export const updateUserTier = async (req, res) => {
             message: `User updated to ${tier}`,
             user: { _id: user._id, affiliateTier: user.affiliateTier }
         });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getPendingPayouts = async (req, res) => {
+    try {
+        // Sirf unhein dhoondo jinke paas paise hain (> 0)
+        const affiliates = await User.find({ walletBalance: { $gt: 0 } })
+            .select('name email affiliateTier walletBalance referralCode')
+            .sort({ walletBalance: -1 }); // Ziada paise wale upar
+
+        res.json(affiliates);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 4. Mark as Paid (Reset Balance)
+export const processPayout = async (req, res) => {
+    try {
+        const { userId, amount } = req.body;
+        const adminId = req.user._id;
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (user.walletBalance < amount) {
+            return res.status(400).json({ message: "Amount exceeds wallet balance" });
+        }
+
+        // 1. Create Payout Record (History)
+        await Payout.create({
+            affiliateId: user._id,
+            amount: amount,
+            processedBy: adminId
+        });
+
+        // 2. Reset User Wallet
+        user.walletBalance = user.walletBalance - amount;
+        
+        // (Optional) Mark Commissions as Paid
+        await Commission.updateMany(
+            { affiliateId: user._id, status: 'pending' },
+            { status: 'paid' }
+        );
+
+        await user.save();
+
+        res.json({ success: true, message: `Payout of $${amount} recorded successfully!` });
 
     } catch (error) {
         res.status(500).json({ message: error.message });
