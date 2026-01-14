@@ -8,18 +8,14 @@ import jwt from 'jsonwebtoken';
 import { verifyEmailTemplate, resetPasswordTemplate } from '../email-template/emailTemplate.js';
 
 const register = async (userData) => {
-    console.log("userData:", userData);
     const { name, email, password, referredBy } = userData;
 
     const userExists = await User.findOne({ email });
-console.log("referredBy:", referredBy);
     if (userExists) {
         throw new Error('User already exists');
     }
     let referrerId = null;
     if (referredBy) {
-        console.log("Searching for referrer with code:", referredBy);
-
         // Database mein dhoondo ke ye code kiska hai
         const referrer = await User.findOne({ referralCode: referredBy });
 
@@ -192,14 +188,24 @@ const verifyOtp = async ({ email, otp }) => {
         resetPasswordOtpExpires: { $gt: Date.now() },
     });
 
-
     if (!user) {
+        // Debugging logs
+        const debugUser = await User.findOne({ email: normalizedEmail });
+        if (debugUser) {
+            console.log("❌ Password Reset OTP Failed for:", normalizedEmail);
+            console.log("   Current Time:", Date.now());
+            console.log("   Expires At:", debugUser.resetPasswordOtpExpires ? debugUser.resetPasswordOtpExpires.getTime() : "NULL");
+            console.log("   Is Expired?", debugUser.resetPasswordOtpExpires < Date.now());
+        } else {
+            console.log("❌ User not found for Password Reset:", normalizedEmail);
+        }
         throw new Error('Invalid OTP or Email (Password Reset)');
     }
 
     const isMatch = await bcrypt.compare(otp.toString(), user.resetPasswordOtp);
 
     if (!isMatch) {
+        console.log("❌ Invalid OTP for Password Reset:", normalizedEmail);
         throw new Error('Invalid OTP');
     }
 
@@ -233,15 +239,73 @@ const resetPassword = async ({ resetToken, newPassword }) => {
     }
 }
 
+
+const verifyResetOtp = async ({ email, otp }) => {
+    const normalizedEmail = email.toLowerCase();
+    console.log("🔍 Verifying Reset OTP for:", normalizedEmail);
+    console.log("🔑 Input OTP:", otp);
+
+    // STEP 1: Sirf Email se user dhoondo (Expiry check mat lagao abhi)
+    // Hum password aur otp fields explicitly mangwa rahe hain kyunke wo select: false hain
+    const user = await User.findOne({ email: normalizedEmail })
+        .select('+resetPasswordOtp +resetPasswordOtpExpires');
+
+    if (!user) {
+        console.log("❌ User not found with email:", normalizedEmail);
+        throw new Error('User not found');
+    }
+
+    console.log("✅ User Found.");
+    console.log("   - Stored Expiry:", user.resetPasswordOtpExpires);
+    console.log("   - Current Time: ", new Date());
+    console.log("   - Has OTP Hash? ", !!user.resetPasswordOtp);
+
+    // STEP 2: Check karo ke OTP save hua bhi tha ya nahi?
+    if (!user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
+        console.log("⚠️ Error: No OTP request found. Did you call /forgot-password first?");
+        throw new Error('No OTP request found. Please request a new OTP.');
+    }
+
+    // STEP 3: Expiry Check
+    if (user.resetPasswordOtpExpires < Date.now()) {
+        console.log("⏰ Error: OTP Expired.");
+        console.log("   - Difference:", user.resetPasswordOtpExpires - Date.now(), "ms");
+        throw new Error('OTP has expired. Please request a new one.');
+    }
+
+    // STEP 4: Hash Match Check
+    const isMatch = await bcrypt.compare(otp.toString(), user.resetPasswordOtp);
+    console.log("🔐 Hash Match Result:", isMatch);
+
+    if (!isMatch) {
+        throw new Error('Invalid OTP');
+    }
+
+    // --- SUCCESS ---
+    // Cleanup
+    user.resetPasswordOtp = undefined;
+    user.resetPasswordOtpExpires = undefined;
+    await user.save();
+
+    // Generate Token for Reset Password Screen
+    const resetToken = jwt.sign({ id: user._id, type: 'reset' }, process.env.JWT_SECRET, { expiresIn: '10m' });
+
+    return { 
+        message: 'OTP Verified',
+        resetToken 
+    };
+};
+
 const verifyEmailOtp = async ({ email, otp }) => {
     const normalizedEmail = email.toLowerCase();
+    console.log("OTP", otp)
     const user = await User.findOne({
         email: normalizedEmail,
         verificationOtpExpires: { $gt: Date.now() },
     });
 
 
-
+    console.log("Verify email otp", user)
     if (!user) {
         // Debugging: check if user exists at all
         const anyUser = await User.findOne({ email: normalizedEmail });
@@ -305,9 +369,9 @@ const resendVerificationOtp = async (email) => {
         throw new Error('User not found');
     }
 
-    if (user.isVerified) {
-        throw new Error('User already verified');
-    }
+    // if (user.isVerified) {
+    //     throw new Error('User already verified');
+    // }
 
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -400,6 +464,7 @@ const updatePassword = async (userId, { currentPassword, newPassword }) => {
 };
 
 export default {
+    verifyResetOtp,
     register,
     login,
     googleLogin,

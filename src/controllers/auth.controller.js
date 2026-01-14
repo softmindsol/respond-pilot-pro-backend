@@ -7,6 +7,7 @@ const registerUser = async (req, res) => {
         const user = await authService.register(validatedData);
         res.status(201).json(user);
     } catch (error) {
+        console.log(error);
         if (error.name === 'ZodError') {
             res.status(400).json({ message: error.errors });
         } else {
@@ -60,6 +61,22 @@ const verifyOtp = async (req, res) => {
         const result = await authService.verifyOtp({ email, otp });
         res.json(result);
     } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+// Password Reset OTP verify karne ke liye
+const verifyResetOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        console.log('email:',email)
+        if (!email || !otp) throw new Error('Email and OTP are required');
+        
+        // 🔥 Call the NEW function, not verifyEmailOtp
+        const result = await authService.verifyResetOtp({ email, otp });
+        
+        res.json(result);
+    } catch (error) {
+        console.log(error);
         res.status(400).json({ message: error.message });
     }
 };
@@ -154,15 +171,10 @@ const updateUserProfile = async (req, res) => {
 
         // If file was uploaded by multer, use its path
         if (req.file) {
-            // Converts 'uploads\filename.jpg' -> '/uploads/filename.jpg'
-            // Ensure your backend URL is prefixed on frontend or return full URL here if env available
+            
             const filePath = req.file.path.replace(/\\/g, "/");
             // If you want relative path:
             profileImage = `/${filePath}`;
-
-            // OR if you want full URL (better for frontend):
-            // const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
-            // profileImage = `${baseUrl}/${filePath}`;
         }
 
         const result = await authService.updateUserProfile(userId, {
@@ -216,4 +228,4 @@ const loginAdmin = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, loginAdmin, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword };
+export { registerUser, loginUser, loginAdmin, googleAuth, forgotPassword, verifyOtp, resetPassword, verifyEmailOtp, resendVerificationOtp, getProfile, updateToneSettings, updateUserProfile, updatePassword,verifyResetOtp };
