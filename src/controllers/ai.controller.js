@@ -48,6 +48,9 @@ const TONE_INSTRUCTIONS = {
 };
 
 const validateAccess = (user, toneType) => {
+     if (user.affiliateTier === 'tier1') {
+        return; 
+    }
     const plan = user.plan || PLANS.FREE;
 
     if (plan === PLANS.FREE) {
@@ -78,7 +81,8 @@ const generateReplyPrompt = ({
     toneContent,
     videoTitle,
     authorName,
-    userPlan
+    userPlan,
+    affiliateTier 
 }) => {
     // 1. Base Identity
     let identity = `You are a professional YouTube Creator's assistant.`;
@@ -95,15 +99,16 @@ const generateReplyPrompt = ({
     }
 
     // 3. Safety Check Logic based on Plan
-    const isProPlus = userPlan === PLANS.PRO_PLUS;
+    // const isProPlus = userPlan === PLANS.PRO_PLUS;
+    const isProPlusOrVIP = userPlan === PLANS.PRO_PLUS || affiliateTier === 'tier1';
 
-    const taskInstructions = isProPlus
+    const taskInstructions = isProPlusOrVIP
         ? `1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
     2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty or provide a neutral placeholder.`
         : `1. **Generate Reply:** Start generating the reply immediately based on the provided tone. Do not check for flags status or safety labels. Always set status to "safe".
     2. **Reply Generation:** Create a relevant, engaging reply to the comment.`;
 
-    const statusInstruction = isProPlus ? `"safe" | "flagged"` : `"safe"`;
+    const statusInstruction = isProPlusOrVIP ? `"safe" | "flagged"` : `"safe"`;
 
     // 4. Build Final Prompt for JSON Output
     return `
@@ -189,20 +194,17 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 
     try {
-        // 5. GENERATE PROMPT
-        // 5. GENERATE PROMPT
         const prompt = generateReplyPrompt({
             comment,
             toneType: requestedToneType,
             toneContent,
             videoTitle,
             authorName,
-            userPlan: user.plan || PLANS.FREE
+            userPlan: user.plan || PLANS.FREE,
+            affiliateTier: user.affiliateTier // 🔥 Pass Tier to Prompt Logic
+
         });
 
-        // 6. CALL LLM (Force JSON output)
-        // Ensure your llmClient or model config supports JSON mode if possible, 
-        // otherwise rely on prompt instruction.
         const responseText = await llmClient({
             model: 'gemini-2.5-flash',
             prompt,
@@ -211,15 +213,12 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             responseMimeType: 'application/json'
         });
 
-        // 7. PARSE JSON RESPONSE
         let aiResult;
         try {
-            // Clean up markdown code blocks if any (just in case, though JSON mode usually avoids them)
             const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
             aiResult = JSON.parse(cleanedText);
         } catch (e) {
             console.warn("AI JSON Parse Failed, trying to extract content from malformed JSON:", e);
-            // Robust extraction if JSON is malformed or truncated
             const statusMatch = responseText.match(/"status":\s*"([^"]+)"/i);
             const replyMatch = responseText.match(/"reply":\s*"([^"]+)(?:"|$)/i);
 
@@ -228,19 +227,10 @@ export const generateReply = asyncHandler(async (req, res, next) => {
                 reply: replyMatch ? replyMatch[1] : responseText.substring(0, 1000)
             };
 
-            // If the reply still contains JSON structure, it means extraction failed
             if (aiResult.reply.includes('{"status":') || aiResult.reply.length < 5) {
                 aiResult.reply = "I apologize, but I couldn't generate a complete reply. Please try again.";
             }
         }
-
-        // 8. UPDATE USAGE (Only if we are NOT in draft-only mode, or if you want to charge for drafts)
-        // Client requirement says "automated drafting", so this happens A LOT. 
-        // Usually, you might want to only increment `repliesUsed` when they click "Approve". 
-        // But for MVP, let's keep it simple or maybe assume drafts are cheap.
-
-        // user.repliesUsed = (user.repliesUsed || 0) + 1;
-        // await user.save();
 
         res.json({
             success: true,
