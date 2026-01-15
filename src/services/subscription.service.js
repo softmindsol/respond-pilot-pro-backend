@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import User from '../models/user.model.js';
 import Commission from '../models/commission.model.js'; // Import Commission Model
+import Transaction from '../models/transaction.model.js';
 
 // Initialize Stripe 
 let stripe;
@@ -149,6 +150,7 @@ export const handleWebhook = async (event) => {
 const handleCheckoutCompleted = async (session) => {
     const userId = session.metadata.userId;
     const planType = session.metadata.planType;
+    const amountTotal = session.amount_total / 100; // Convert cents to dollars
 
     const user = await User.findById(userId);
     if (!user) return;
@@ -164,8 +166,17 @@ const handleCheckoutCompleted = async (session) => {
             user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
         }
         user.subscriptionStatus = 'active'; // or whatever you track
+        await user.save();
     }
-    await user.save();
+
+      await Transaction.create({
+        userId: user._id,
+        stripeSessionId: session.id,
+        amount: amountTotal,
+        planType: planType,
+        status: session.payment_status === 'paid' ? 'completed' : 'failed',
+        paymentMethod: session.payment_method_types ? session.payment_method_types[0] : 'card'
+    });
 };
 
 
