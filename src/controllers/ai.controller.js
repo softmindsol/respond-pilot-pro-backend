@@ -1,5 +1,6 @@
 import { llmClient } from '../utils/llmClientStream.js';
 import User from '../models/user.model.js';
+import Notification from '../models/notification.model.js'; // 🔥 IMPORT ADDED
 
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -39,7 +40,6 @@ const TONE_TYPES = {
     CUSTOM: 'custom'
 };
 
-// Prompt Definitions
 const TONE_INSTRUCTIONS = {
     [TONE_TYPES.FRIENDLY]: "Tone: Friendly, approachable, and uses casual language with a few emojis like 😊 or 👍.",
     [TONE_TYPES.PROFESSIONAL]: "Tone: Strictly professional, concise, and polite. Do not use emojis or slang.",
@@ -70,8 +70,6 @@ const validateAccess = (user, toneType) => {
             throw { message: `Advanced Persona is for Pro Plus users.`, code: STATUS_CODES.FORBIDDEN };
         }
     }
-
-    // Pro Plus: All Allowed
 };
 
 
@@ -81,16 +79,13 @@ const generateReplyPrompt = ({
     toneContent,
     videoTitle,
     authorName,
-    userPlan,
-    affiliateTier 
+    isSafetyEnabled // 🔥 NEW PARAMETER
 }) => {
-    // 1. Base Identity
     let identity = `You are a professional YouTube Creator's assistant.`;
     let toneInstruction = "";
 
-    // 2. Determine Tone Instruction
     if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
-        identity = ""; // Persona overrides base identity
+        identity = ""; 
         toneInstruction = `Your Persona Instructions: "${toneContent || 'Be helpful.'}"`;
     } else if (toneType === TONE_TYPES.CUSTOM) {
         toneInstruction = `Custom Tone Style: "${toneContent || 'Professional and engaging'}"`;
@@ -98,19 +93,15 @@ const generateReplyPrompt = ({
         toneInstruction = TONE_INSTRUCTIONS[toneType] || TONE_INSTRUCTIONS.FRIENDLY;
     }
 
-    // 3. Safety Check Logic based on Plan
-    // const isProPlus = userPlan === PLANS.PRO_PLUS;
-    const isProPlusOrVIP = userPlan === PLANS.PRO_PLUS || affiliateTier === 'tier1';
-
-    const taskInstructions = isProPlusOrVIP
+    // 🔥 UPDATED SAFETY LOGIC BASED ON SETTING
+    const taskInstructions = isSafetyEnabled
         ? `1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
-    2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty or provide a neutral placeholder.`
-        : `1. **Generate Reply:** Start generating the reply immediately based on the provided tone. Do not check for flags status or safety labels. Always set status to "safe".
-    2. **Reply Generation:** Create a relevant, engaging reply to the comment.`;
+           2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty.`
+        : `1. **Generate Reply:** Start generating the reply immediately based on the provided tone. DO NOT check for flags or safety. Always set status to "safe".
+           2. **Reply Generation:** Create a relevant, engaging reply to the comment.`;
 
-    const statusInstruction = isProPlusOrVIP ? `"safe" | "flagged"` : `"safe"`;
+    const statusInstruction = isSafetyEnabled ? `"safe" | "flagged"` : `"safe"`;
 
-    // 4. Build Final Prompt for JSON Output
     return `
     ${identity}
     ${toneInstruction}
@@ -143,19 +134,16 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         tone,
         videoTitle,
         authorName,
-        draftOnly // New flag to skip usage counting if it's just a draft
+        commentId, // 🔥 Needed for notification linking
+        draftOnly 
     } = req.body;
 
     const user = req.user;
 
-    // Basic validation
     if (isGibberish(comment)) {
         return handleError(next, 'Comment text is invalid.', STATUS_CODES.BAD_REQUEST);
     }
 
-    // 1. CHECK USAGE LIMIT (Skip check if we just want a draft for the UI to show "AI is writing...")
-    // Ideally, drafts count towards usage ONLY when approved, OR we charge small amount. 
-    // For now, let's count generation as usage to prevent abuse.
     const limit = user.repliesLimit || 0;
     const used = user.repliesUsed || 0;
 
@@ -163,7 +151,6 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         return handleError(next, `Usage limit reached (${used}/${limit}). Please Upgrade.`, STATUS_CODES.FORBIDDEN);
     }
 
-    // 2. NORMALIZE TONE
     let requestedToneType = (tone || user.tone || 'friendly').toLowerCase();
 
     const toneMap = {
@@ -178,14 +165,12 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         requestedToneType = 'friendly';
     }
 
-    // 3. VALIDATE PLAN PERMISSIONS
     try {
         validateAccess(user, requestedToneType);
     } catch (permError) {
         return handleError(next, permError.message, permError.code || 403);
     }
 
-    // 4. EXTRACT TONE CONTENT
     let toneContent = "";
     if (requestedToneType === TONE_TYPES.CUSTOM) {
         toneContent = user.customToneDescription;
@@ -194,15 +179,19 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 
     try {
+        // 🔥 CALCULATE SAFETY SETTING
+        // User must be eligible (Pro Plus/VIP) AND have setting ON
+        const isEligible = user.plan === PLANS.PRO_PLUS || user.affiliateTier === 'tier1';
+        const userPref = user.notificationSettings?.aiCrisisDetection;
+        const isSafetyEnabled = isEligible && userPref;
+
         const prompt = generateReplyPrompt({
             comment,
             toneType: requestedToneType,
             toneContent,
             videoTitle,
             authorName,
-            userPlan: user.plan || PLANS.FREE,
-            affiliateTier: user.affiliateTier // 🔥 Pass Tier to Prompt Logic
-
+            isSafetyEnabled // 🔥 Pass Setting
         });
 
         const responseText = await llmClient({
@@ -218,18 +207,20 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
             aiResult = JSON.parse(cleanedText);
         } catch (e) {
-            console.warn("AI JSON Parse Failed, trying to extract content from malformed JSON:", e);
-            const statusMatch = responseText.match(/"status":\s*"([^"]+)"/i);
-            const replyMatch = responseText.match(/"reply":\s*"([^"]+)(?:"|$)/i);
+            console.warn("AI JSON Parse Failed", e);
+            aiResult = { status: "safe", reply: responseText };
+        }
 
-            aiResult = {
-                status: statusMatch ? statusMatch[1] : "safe",
-                reply: replyMatch ? replyMatch[1] : responseText.substring(0, 1000)
-            };
-
-            if (aiResult.reply.includes('{"status":') || aiResult.reply.length < 5) {
-                aiResult.reply = "I apologize, but I couldn't generate a complete reply. Please try again.";
-            }
+        // 🔥 NOTIFICATION TRIGGER LOGIC
+        if (aiResult.status === 'flagged') {
+            await Notification.create({
+                user: user._id,
+                type: 'crisis_alert',
+                message: `Risky comment detected from ${authorName}: "${comment.substring(0, 30)}..."`,
+                commentId: commentId,
+                isRead: false
+            });
+            console.log("🔔 Crisis Notification Created");
         }
 
         res.json({

@@ -140,6 +140,7 @@ const getProfile = async (req, res) => {
             totalEarnings: user.totalEarnings,
             tone: user.tone,
             toneType: user.toneType,
+            notificationSettings: user.notificationSettings, // 🔥 Return settings
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         });

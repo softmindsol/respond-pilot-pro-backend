@@ -131,7 +131,13 @@ const userSchema = mongoose.Schema(
             type: Number,
             default: 0
         }
-
+,
+notificationSettings: {
+        aiCrisisDetection: { 
+            type: Boolean, 
+            default: false // Default OFF rakhein (User khud ON karega agar Pro Plus hai)
+        }
+    },
     },
     {
         timestamps: true,

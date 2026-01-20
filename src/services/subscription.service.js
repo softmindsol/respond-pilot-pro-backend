@@ -162,6 +162,12 @@ const handleCheckoutCompleted = async (session) => {
             user.plan = planType;
             user.repliesUsed = 0;
             user.repliesLimit = creditsToAdd;
+
+            // 🔥 Auto-enable Crisis Detection for Pro Plus
+            if (planType === 'PRO_PLUS') {
+                 if (!user.notificationSettings) user.notificationSettings = {};
+                 user.notificationSettings.aiCrisisDetection = true;
+            }
         } else {
             user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
         }
