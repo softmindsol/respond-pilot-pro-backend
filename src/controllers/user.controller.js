@@ -92,6 +92,43 @@ export const markNotificationRead = async (req, res) => {
     }
 };
 
+export const completeOnboarding = async (req, res) => {
+    try {
+        const { tone } = req.body; // e.g., 'hype' or 'community'
+        const user = await User.findById(req.user._id);
+
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // 1. Save Tone
+        user.tone = tone;
+        
+        // 2. Mark Onboarded
+        user.isOnboarded = true;
+        
+        // 3. Ensure Security is ON (Just in case)
+        // if (!user.notificationSettings) user.notificationSettings = {};
+        // user.notificationSettings.aiCrisisDetection = true;
+
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: "Setup complete!", 
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isOnboarded: true,
+                tone: user.tone,
+                // ... other fields
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export const markAllNotificationsRead = async (req, res) => {
     try {
         await Notification.updateMany(

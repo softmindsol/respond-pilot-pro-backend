@@ -91,6 +91,7 @@ const login = async ({ email, password }) => {
             repliesUsed: user.repliesUsed || 0,
             tone: user.tone,
             toneType: user.toneType,
+            isOnboarded: user.isOnboarded,
             profileImage: user.profileImage,
             phoneNumber: user.phoneNumber,
             isConnectedToYoutube: user.isConnectedToYoutube,

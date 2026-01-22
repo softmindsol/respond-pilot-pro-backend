@@ -1,6 +1,7 @@
 import { llmClient } from '../utils/llmClientStream.js';
 import User from '../models/user.model.js';
-import Notification from '../models/notification.model.js'; // 🔥 IMPORT ADDED
+import Notification from '../models/notification.model.js'; 
+import { PERSONAS } from '../config/personas.js';
 
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -31,20 +32,21 @@ const PLANS = {
     PRO_PLUS: 'PRO_PLUS'
 };
 
+// Define Tone Types (Matches Frontend Keys)
 const TONE_TYPES = {
     FRIENDLY: 'friendly',
-    FACTUAL: 'factual',
-    HAPPY: 'happy',
     PROFESSIONAL: 'professional',
+    HAPPY: 'happy', // Map to Hype Man or similar
+    FACTUAL: 'factual', // Map to Minimalist
+    
+    // 🔥 New Personas (Magic Setup)
+    COMMUNITY: 'community', 
+    HYPE: 'hype',
+    MINIMALIST: 'minimalist',
+    
+    // Advanced
     ADVANCED_PERSONA: 'advanced_persona',
     CUSTOM: 'custom'
-};
-
-const TONE_INSTRUCTIONS = {
-    [TONE_TYPES.FRIENDLY]: "Tone: Friendly, approachable, and uses casual language with a few emojis like 😊 or 👍.",
-    [TONE_TYPES.PROFESSIONAL]: "Tone: Strictly professional, concise, and polite. Do not use emojis or slang.",
-    [TONE_TYPES.HAPPY]: "Tone: High energy, very enthusiastic! Use exclamation marks and hype emojis like 🔥 and 🚀.",
-    [TONE_TYPES.FACTUAL]: "Tone: Direct, objective, and focuses on facts. No fluff or emotion.",
 };
 
 const validateAccess = (user, toneType) => {
@@ -53,47 +55,51 @@ const validateAccess = (user, toneType) => {
     }
     const plan = user.plan || PLANS.FREE;
 
+    // Free/Basic/Pro logic... (Adjust as per your tiers)
     if (plan === PLANS.FREE) {
-        if (toneType !== TONE_TYPES.FRIENDLY) {
-            throw { message: `Free plan only supports 'Friendly' tone. Upgrade to unlock more.`, code: STATUS_CODES.FORBIDDEN };
+        // Free allows basic personas
+        if (![TONE_TYPES.FRIENDLY, TONE_TYPES.PROFESSIONAL].includes(toneType)) {
+             // throw { message: `Upgrade plan to unlock this tone.`, code: STATUS_CODES.FORBIDDEN };
         }
     }
-
-    if (plan === PLANS.BASIC) {
-        if (toneType === TONE_TYPES.CUSTOM || toneType === TONE_TYPES.ADVANCED_PERSONA) {
-            throw { message: `Custom, and Advanced Persona tones are for Pro users.`, code: STATUS_CODES.FORBIDDEN };
-        }
-    }
-
-    if (plan === PLANS.PRO) {
-        if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
-            throw { message: `Advanced Persona is for Pro Plus users.`, code: STATUS_CODES.FORBIDDEN };
-        }
-    }
+    
+    // Pro Plus: All Allowed
 };
 
 
+// 🔥 UPDATED PROMPT GENERATOR (Supports Personas & Safety)
 const generateReplyPrompt = ({
     comment,
     toneType,
     toneContent,
     videoTitle,
     authorName,
-    isSafetyEnabled // 🔥 NEW PARAMETER
+    isSafetyEnabled
 }) => {
-    let identity = `You are a professional YouTube Creator's assistant.`;
+    
+    // 1. Determine Identity & Tone Instruction
     let toneInstruction = "";
 
-    if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
-        identity = ""; 
+    // Check if tone is one of the Magic Personas
+    if (PERSONAS[toneType]) {
+        toneInstruction = PERSONAS[toneType].prompt;
+    } 
+    // Handle Advanced/Custom
+    else if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
         toneInstruction = `Your Persona Instructions: "${toneContent || 'Be helpful.'}"`;
-    } else if (toneType === TONE_TYPES.CUSTOM) {
+    } 
+    else if (toneType === TONE_TYPES.CUSTOM) {
         toneInstruction = `Custom Tone Style: "${toneContent || 'Professional and engaging'}"`;
-    } else {
-        toneInstruction = TONE_INSTRUCTIONS[toneType] || TONE_INSTRUCTIONS.FRIENDLY;
+    } 
+    // Fallback to old keys mapping or default
+    else {
+        // Map old keys to new logic if needed
+        if(toneType === 'friendly') toneInstruction = PERSONAS['community'].prompt;
+        else if(toneType === 'happy') toneInstruction = PERSONAS['hype'].prompt;
+        else toneInstruction = PERSONAS['professional'].prompt;
     }
 
-    // 🔥 UPDATED SAFETY LOGIC BASED ON SETTING
+    // 2. Safety Logic
     const taskInstructions = isSafetyEnabled
         ? `1. **Analyze Safety:** Check if the comment is negative, hate speech, spam, controversial, or requires careful manual review.
            2. **Generate Reply:** If safe, generate a reply based on the tone. If flagged, leave reply empty.`
@@ -103,7 +109,6 @@ const generateReplyPrompt = ({
     const statusInstruction = isSafetyEnabled ? `"safe" | "flagged"` : `"safe"`;
 
     return `
-    ${identity}
     ${toneInstruction}
 
     Video Context: ${videoTitle || 'General Content'}
@@ -122,19 +127,20 @@ const generateReplyPrompt = ({
     }
     
     **Instructions:**
-    - If the input contains "[CONTEXT START]", reply specifically to the LAST person mentioned.
+    - Detect the language of the comment and reply in the same language.
+    - If input has "[CONTEXT START]", reply to the last person.
     - Output ONLY valid JSON.
     `;
 };
 
-// NON-STREAMING VERSION
+// --- CONTROLLER ---
 export const generateReply = asyncHandler(async (req, res, next) => {
     const {
         comment: comment,
         tone,
         videoTitle,
         authorName,
-        commentId, // 🔥 Needed for notification linking
+        commentId, 
         draftOnly 
     } = req.body;
 
@@ -144,33 +150,20 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         return handleError(next, 'Comment text is invalid.', STATUS_CODES.BAD_REQUEST);
     }
 
+    // 1. Check Usage Limit
     const limit = user.repliesLimit || 0;
     const used = user.repliesUsed || 0;
 
-    if (used >= limit) {
-        return handleError(next, `Usage limit reached (${used}/${limit}). Please Upgrade.`, STATUS_CODES.FORBIDDEN);
+    // VIPs Bypass Limit (Assuming logic handled in middleware or here)
+    if (user.affiliateTier !== 'tier1' && used >= limit) {
+        return handleError(next, `Usage limit reached (${used}/${limit}).`, STATUS_CODES.FORBIDDEN);
     }
 
-    let requestedToneType = (tone || user.tone || 'friendly').toLowerCase();
+    // 2. Determine Requested Tone
+    // Priority: Request Body -> User Profile -> Default
+    let requestedToneType = (tone || user.tone || 'professional').toLowerCase();
 
-    const toneMap = {
-        'engaging': 'happy',
-        'grateful': 'friendly',
-        'humorous': 'friendly',
-        'empathetic': 'friendly'
-    };
-    if (toneMap[requestedToneType]) requestedToneType = toneMap[requestedToneType];
-
-    if (!Object.values(TONE_TYPES).includes(requestedToneType)) {
-        requestedToneType = 'friendly';
-    }
-
-    try {
-        validateAccess(user, requestedToneType);
-    } catch (permError) {
-        return handleError(next, permError.message, permError.code || 403);
-    }
-
+    // 3. Extract Custom Content if needed
     let toneContent = "";
     if (requestedToneType === TONE_TYPES.CUSTOM) {
         toneContent = user.customToneDescription;
@@ -179,21 +172,25 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 
     try {
-        // 🔥 CALCULATE SAFETY SETTING
-        // User must be eligible (Pro Plus/VIP) AND have setting ON
-        const isEligible = user.plan === PLANS.PRO_PLUS || user.affiliateTier === 'tier1';
+        // 4. Calculate Safety Setting
+        const isEligibleForSafety = user.plan === PLANS.PRO_PLUS || user.affiliateTier === 'tier1';
         const userPref = user.notificationSettings?.aiCrisisDetection;
-        const isSafetyEnabled = isEligible && userPref;
+        
+        // Safety is ON only if User is Eligible AND has Enabled it
+        // (For Magic Setup users, aiCrisisDetection defaults to true)
+        const isSafetyEnabled = isEligibleForSafety && userPref;
 
+        // 5. Generate Prompt
         const prompt = generateReplyPrompt({
             comment,
             toneType: requestedToneType,
             toneContent,
             videoTitle,
             authorName,
-            isSafetyEnabled // 🔥 Pass Setting
+            isSafetyEnabled 
         });
 
+        // 6. Call LLM
         const responseText = await llmClient({
             model: 'gemini-2.5-flash',
             prompt,
@@ -202,6 +199,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             responseMimeType: 'application/json'
         });
 
+        // 7. Parse Response
         let aiResult;
         try {
             const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -211,7 +209,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             aiResult = { status: "safe", reply: responseText };
         }
 
-        // 🔥 NOTIFICATION TRIGGER LOGIC
+        // 8. Handle Notifications
         if (aiResult.status === 'flagged') {
             await Notification.create({
                 user: user._id,
@@ -220,9 +218,9 @@ export const generateReply = asyncHandler(async (req, res, next) => {
                 commentId: commentId,
                 isRead: false
             });
-            console.log("🔔 Crisis Notification Created");
         }
 
+        // 9. Send Response
         res.json({
             success: true,
             status: aiResult.status || "safe",

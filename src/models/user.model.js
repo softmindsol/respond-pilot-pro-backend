@@ -83,8 +83,7 @@ const userSchema = mongoose.Schema(
         },
         toneType: {
             type: String,
-            enum: ['friendly', 'factual', 'happy', 'professional', 'advanced_persona', 'custom'],
-            default: 'friendly'
+            default: 'professional'
         },
         isVerified: {
             type: Boolean,
@@ -138,6 +137,10 @@ notificationSettings: {
             default: false // Default OFF rakhein (User khud ON karega agar Pro Plus hai)
         }
     },
+     isOnboarded: {
+            type: Boolean,
+            default: false 
+        },
     },
     {
         timestamps: true,
