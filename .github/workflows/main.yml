@@ -1,0 +1,76 @@
+name: Deploy to Self-Hosted Ubuntu
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: Deploy Backend
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Node & Yarn versions
+        run: |
+          node -v
+          yarn -v
+
+      - name: Install dependencies
+        run: |
+          yarn install
+
+      - name: Copy environment file
+        run: |
+          cp /var/www/respond-pilot-pro-envs/respond-pilot-pro-env-be .env
+          echo "✅ Environment file copied successfully."
+
+      - name: Build the project (if needed)
+        run: |
+          if [ -f package.json ] && grep -q "\"build\":" package.json; then
+            yarn build
+          else
+            echo "No build script found. Skipping build step."
+          fi
+
+      - name: Start or Restart PM2 process
+        run: |
+          APP_NAME="respondpilot-backend"
+          SCRIPT="src/app.js"
+
+          if pm2 list | grep -q "$APP_NAME"; then
+            echo "🔁 Restarting existing PM2 process..."
+            pm2 restart $APP_NAME
+          else
+            echo "🚀 Starting new PM2 process..."
+            pm2 start $SCRIPT --name $APP_NAME
+          fi
+
+          pm2 save
+
+      # ------------------------------
+      # 🔔 SEND SLACK NOTIFICATION (SUCCESS)
+      # ------------------------------
+      - name: Notify Slack - Success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # ------------------------------
+      # 🔔 SEND SLACK NOTIFICATION (FAILURE)
+      # ------------------------------
+      - name: Notify Slack - Failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
