@@ -1,6 +1,12 @@
-
-const generateBaseTemplate = (title, name, messageLine1, messageLine2, otp, footerNote) => {
-    return `<!DOCTYPE html>
+const generateBaseTemplate = (
+  title,
+  name,
+  messageLine1,
+  messageLine2,
+  otp,
+  footerNote,
+) => {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -119,20 +125,14 @@ const generateBaseTemplate = (title, name, messageLine1, messageLine2, otp, foot
         
         .otp-digits {
             display: flex;
+            align-items: center;
             justify-content: center;
-            gap: 10px;
             margin-bottom: 20px;
         }
         
         .digit {
-            width: 50px;
-            height: 60px;
-            background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%);
-            border: 1px solid #363A42;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+         width:100%;
+            text-align: center;
             font-size: 32px;
             font-weight: 700;
             color: white;
@@ -173,12 +173,7 @@ const generateBaseTemplate = (title, name, messageLine1, messageLine2, otp, foot
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="icon-circle">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
-                </svg>
-            </div>
-            <div class="logo-text">Respond Pilot Pro</div>
+            <img src="/uploads/logo.webp" alt="respond_pilot_pro" class="logo-text" />
             <h1>${title}</h1>
         </div>
         
@@ -191,23 +186,21 @@ const generateBaseTemplate = (title, name, messageLine1, messageLine2, otp, foot
             </p>
             
             <div class="otp-box">
-                <div class="otp-label">Verification Code</div>
-                
-                <div class="otp-digits">
-                    <div class="digit">${otp[0]}</div>
-                    <div class="digit">${otp[1]}</div>
-                    <div class="digit">${otp[2]}</div>
-                    <div class="digit">${otp[3]}</div>
-                    <div class="digit">${otp[4]}</div>
-                    <div class="digit">${otp[5]}</div>
-                </div>
-                
-                <div class="timer-box">
-                    Valid for 10 minutes
-                </div>
+                    <div class="otp-label" style="text-align: center;">Verification Code</div>
+                    <div class="otp-digits" style="color: #ffffff; display: flex; width: 100%; justify-content: center; text-align: center; margin: 0px auto;">
+                        <div class="digit">${otp[0]}</div>
+                        <div class="digit">${otp[1]}</div>
+                        <div class="digit">${otp[2]}</div>
+                        <div class="digit">${otp[3]}</div>
+                        <div class="digit">${otp[4]}</div>
+                        <div class="digit">${otp[5]}</div>
+                    </div>
+                    <div class="timer-box" style="text-align: center;">
+                        Valid for 10 minutes
+                    </div>
             </div>
             
-            <p style="color: #666; font-size: 13px; margin-top: 30px;">
+            <p style="color: #ffffff90; font-size: 14px; margin-top: 35px;">
                 ${footerNote || "If you didn't request this, you can safely ignore this email."}
             </p>
         </div>
@@ -221,25 +214,24 @@ const generateBaseTemplate = (title, name, messageLine1, messageLine2, otp, foot
 </html>`;
 };
 
-
 export const verifyEmailTemplate = (name, otp) => {
-    return generateBaseTemplate(
-        "Verify Your Email",
-        name,
-        "Welcome to the future of automated engagement.",
-        "Please use the code below to verify your account.",
-        otp,
-        "If you didn't request this, you can safely ignore this email."
-    );
+  return generateBaseTemplate(
+    "Verify Your Email",
+    name,
+    "Welcome to the future of automated engagement.",
+    "Please use the code below to verify your account.",
+    otp,
+    "If you didn't request this, you can safely ignore this email.",
+  );
 };
 
 export const resetPasswordTemplate = (name, otp) => {
-    return generateBaseTemplate(
-        "Reset Your Password",
-        name,
-        "We received a request to reset your password.",
-        "Use the code below to reset it.",
-        otp,
-        "If you did not request a password reset, please ignore this email or contact support if you are concerned."
-    );
+  return generateBaseTemplate(
+    "Reset Your Password",
+    name,
+    "We received a request to reset your password.",
+    "Use the code below to reset it.",
+    otp,
+    "If you did not request a password reset, please ignore this email or contact support if you are concerned.",
+  );
 };

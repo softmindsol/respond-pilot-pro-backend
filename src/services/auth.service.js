@@ -220,24 +220,25 @@ const verifyOtp = async ({ email, otp }) => {
     return { resetToken };
 };
 
-const resetPassword = async ({ resetToken, newPassword }) => {
-    try {
-        const decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+const resetPassword = async ({ email, newPassword }) => {
+    const normalizedEmail = email.toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
 
-        if (decoded.type !== 'reset') {
-            throw new Error('Invalid token type');
-        }
-
-        const user = await User.findById(decoded.id);
-        if (!user) throw new Error('User not found');
-
-        user.password = newPassword; // Will be hashed by pre-save hook
-        await user.save();
-
-        return { message: 'Password updated successfully' };
-    } catch (error) {
-        throw new Error('Invalid or expired reset token');
+    if (!user) {
+        throw new Error('User not found');
     }
+
+    // if (!user.isResetVerified) {
+    //     throw new Error('Please verify OTP first');
+    // }
+
+    user.password = newPassword; // Will be hashed by pre-save hook
+    user.resetPasswordOtp = undefined;
+    user.resetPasswordOtpExpires = undefined;
+    user.isResetVerified = false;
+    await user.save();
+
+    return { message: 'Password updated successfully' };
 }
 
 
@@ -283,9 +284,8 @@ const verifyResetOtp = async ({ email, otp }) => {
     }
 
     // --- SUCCESS ---
-    // Cleanup
-    user.resetPasswordOtp = undefined;
-    user.resetPasswordOtpExpires = undefined;
+    // Mark as verified but DO NOT clear OTP yet (needed for next step if no token used)
+    user.isResetVerified = true;
     await user.save();
 
     // Generate Token for Reset Password Screen
