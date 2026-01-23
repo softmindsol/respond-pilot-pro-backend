@@ -10,7 +10,6 @@ const PLAN_LIMITS = {
 
 export const checkSubscription = async (req, res, next) => {
     try {
-        // 'protect' middleware se user already req.user mein hai
         const user = req.user;
 
         if (!user) {
