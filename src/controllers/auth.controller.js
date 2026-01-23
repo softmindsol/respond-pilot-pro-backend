@@ -83,9 +83,9 @@ const verifyResetOtp = async (req, res) => {
 
 const resetPassword = async (req, res) => {
     try {
-        const { resetToken, newPassword } = req.body;
-        if (!resetToken || !newPassword) throw new Error('Reset token and new password are required');
-        const result = await authService.resetPassword({ resetToken, newPassword });
+        const { email, newPassword } = req.body;
+        if (!email || !newPassword) throw new Error('Email and new password are required');
+        const result = await authService.resetPassword({ email, newPassword });
         res.json(result);
     } catch (error) {
         res.status(400).json({ message: error.message });
