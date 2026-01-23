@@ -139,9 +139,11 @@ const getProfile = async (req, res) => {
             walletBalance: user.walletBalance,
             totalEarnings: user.totalEarnings,
             tone: user.tone,
+            isOnboarded: user.isOnboarded,
             toneType: user.toneType,
+            notificationSettings: user.notificationSettings, // 🔥 Return settings
             createdAt: user.createdAt,
-            updatedAt: user.updatedAt
+            updatedAt: user.updatedAt,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });

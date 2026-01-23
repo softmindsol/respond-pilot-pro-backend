@@ -17,12 +17,23 @@ export const checkSubscription = async (req, res, next) => {
             return res.status(401).json({ message: "User not authenticated" });
         }
 
+        const used = user.repliesUsed || 0;
+
         // ======================================================
         // 1. FOUNDING PARTNER (TIER 1) - VIP PASS
         // ======================================================
         // Agar user Tier 1 hai, to usay kisi limit ya payment ki zaroorat nahi.
         if (user.affiliateTier === 'tier1') {
             console.log(`✨ Founding Partner Access: ${user.email}`);
+            const VIP_LIMIT = 5000;
+            
+            if (used >= VIP_LIMIT) {
+                return res.status(403).json({ 
+                    message: "Founding Partner limit (5,000) reached. Please buy a Top-Up.",
+                    reason: "limit_exceeded",
+                    usage: { used, limit: VIP_LIMIT }
+                });
+            }
             return next(); 
         }
 
@@ -41,7 +52,7 @@ export const checkSubscription = async (req, res, next) => {
 
         
         // Current usage
-        const used = user.repliesUsed || 0;
+        // const used = user.repliesUsed || 0;
 
         // Current Limit:
         // Hum DB field 'repliesLimit' use karenge (taake Top-Ups bhi count hon).

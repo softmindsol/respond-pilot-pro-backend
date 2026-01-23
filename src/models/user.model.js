@@ -23,7 +23,7 @@ const userSchema = mongoose.Schema(
         },
         plan: {
             type: String,
-            enum: ['Free', 'Basic', 'Pro', 'PRO_PLUS'],
+            enum: ['Free', 'Basic', 'Pro', 'PRO_PLUS', 'Founding Partner'],
             default: 'Free'
         },
         repliesUsed: {
@@ -83,8 +83,7 @@ const userSchema = mongoose.Schema(
         },
         toneType: {
             type: String,
-            enum: ['friendly', 'factual', 'happy', 'professional', 'advanced_persona', 'custom'],
-            default: 'friendly'
+            default: 'professional'
         },
         isVerified: {
             type: Boolean,
@@ -131,7 +130,17 @@ const userSchema = mongoose.Schema(
             type: Number,
             default: 0
         }
-
+,
+notificationSettings: {
+        aiCrisisDetection: { 
+            type: Boolean, 
+            default: true // Default OFF rakhein (User khud ON karega agar Pro Plus hai)
+        }
+    },
+     isOnboarded: {
+            type: Boolean,
+            default: false 
+        },
     },
     {
         timestamps: true,
