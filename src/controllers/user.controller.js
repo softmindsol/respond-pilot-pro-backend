@@ -41,13 +41,15 @@ export const updateSettings = async (req, res) => {
 
         // Security Check: Kya user qualify karta hai?
         // (Sirf Pro Plus aur Tier 1 allow hain)
-        const isEligible = user.plan === 'Pro Plus' || 
-                           user.plan === 'PRO_PLUS' || 
-                           user.affiliateTier === 'tier1';
+        // Security Check: Kya user qualify karta hai?
+        // (Sirf Pro Plus aur Tier 1 allow hain)
+        // const isEligible = user.plan === 'Pro Plus' || 
+        //                    user.plan === 'PRO_PLUS' || 
+        //                    user.affiliateTier === 'tier1';
 
-        if (!isEligible) {
-            return res.status(403).json({ message: "This feature requires Pro Plus plan." });
-        }
+        // if (!isEligible) {
+        //     return res.status(403).json({ message: "This feature requires Pro Plus plan." });
+        // }
 
         user.notificationSettings.aiCrisisDetection = aiCrisisDetection;
         await user.save();

@@ -173,12 +173,15 @@ export const generateReply = asyncHandler(async (req, res, next) => {
 
     try {
         // 4. Calculate Safety Setting
-        const isEligibleForSafety = user.plan === PLANS.PRO_PLUS || user.affiliateTier === 'tier1';
+        // 4. Calculate Safety Setting
+        // const isEligibleForSafety = user.plan === PLANS.PRO_PLUS || user.affiliateTier === 'tier1';
+        const isEligibleForSafety = true; // Enabled for ALL Plans now (Free, Basic, Pro, Pro+)
         const userPref = user.notificationSettings?.aiCrisisDetection;
         
         // Safety is ON only if User is Eligible AND has Enabled it
         // (For Magic Setup users, aiCrisisDetection defaults to true)
-        const isSafetyEnabled = isEligibleForSafety && userPref;
+        // const isSafetyEnabled = isEligibleForSafety && userPref;
+    const isSafetyEnabled = user.notificationSettings?.aiCrisisDetection; 
 
         // 5. Generate Prompt
         const prompt = generateReplyPrompt({

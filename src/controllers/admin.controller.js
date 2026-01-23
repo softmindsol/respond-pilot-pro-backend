@@ -67,7 +67,8 @@ export const updateUserTier = async (req, res) => {
         if (tier === 'tier1') {
             // Logic: Is user ko Stripe check karne ki zaroorat nahi hogi (Middleware handle karega)
             // Aap UI ke liye plan name update kar sakte hain
-            // user.plan = 'Founding Partner'; 
+             user.plan = 'Founding Partner'; 
+             user.repliesLimit = 5000;
         }
 
         await user.save();

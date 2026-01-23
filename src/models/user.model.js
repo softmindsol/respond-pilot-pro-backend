@@ -23,7 +23,7 @@ const userSchema = mongoose.Schema(
         },
         plan: {
             type: String,
-            enum: ['Free', 'Basic', 'Pro', 'PRO_PLUS'],
+            enum: ['Free', 'Basic', 'Pro', 'PRO_PLUS', 'Founding Partner'],
             default: 'Free'
         },
         repliesUsed: {
@@ -134,7 +134,7 @@ const userSchema = mongoose.Schema(
 notificationSettings: {
         aiCrisisDetection: { 
             type: Boolean, 
-            default: false // Default OFF rakhein (User khud ON karega agar Pro Plus hai)
+            default: true // Default OFF rakhein (User khud ON karega agar Pro Plus hai)
         }
     },
      isOnboarded: {
