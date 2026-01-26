@@ -11,5 +11,6 @@ router.get('/videos', protect, youtubeController.getVideos);
 router.get('/callback', youtubeController.googleCallback);
 router.get('/comments', protect, youtubeController.getComments);
 router.post('/reply', protect,checkSubscription, youtubeController.postReply);
+router.post('/disconnect', protect, youtubeController.disconnectChannel);
 
 export default router;
