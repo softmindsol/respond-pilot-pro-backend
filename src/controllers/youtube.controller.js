@@ -96,10 +96,33 @@ const postReply = async (req, res) => {
     }
 };
 
+const disconnectChannel = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // User ko update karein aur YouTube fields ko NULL/FALSE set karein
+        await User.findByIdAndUpdate(userId, {
+            isConnectedToYoutube: false,
+            youtubeChannelId: null,
+            youtubeChannelName: null,
+            youtubeRefreshToken: null,
+            lastVideoSync: null,
+            // Agar aap chaho to 'tone' ya 'notificationSettings' reset na karein
+            // taake user wapis aaye to settings wahi milen.
+        });
+
+        res.json({ success: true, message: "Channel disconnected successfully." });
+
+    } catch (error) {
+        console.error("Disconnect Error:", error);
+        res.status(500).json({ message: "Failed to disconnect channel." });
+    }
+};
 export default {
     getAuthUrl,
     googleCallback,
     getComments,
     getVideos,
-    postReply
+    postReply,
+    disconnectChannel
 };
