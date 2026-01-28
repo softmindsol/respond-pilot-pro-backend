@@ -114,7 +114,7 @@ const userSchema = mongoose.Schema(
             enum: ['none', 'tier1', 'tier2'],
             default: 'none'
             // 'tier1' = Founding Partner (30% comm + Free Access)
-            // 'tier2' = Standard Affiliate (15% comm + Paid Access)
+            // 'tier2' = Standard Affiliate (20% comm + Paid Access)
         },
         referralCode: {
             type: String,

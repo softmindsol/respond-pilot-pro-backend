@@ -5,7 +5,6 @@ import aiRoutes from './ai.routes.js';
 import subscriptionRoutes from './subscription.routes.js';
 import adminRoutes from './admin.routes.js';
 import userRouter from './user.routes.js'
-
 const router = express.Router();
 
 router.use('/auth', authRoutes);
