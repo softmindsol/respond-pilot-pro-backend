@@ -57,6 +57,7 @@ export const createCheckoutSession = async (user, planType) => {
     // 🔥 LOGIC: Top-Up is 'payment', Plans are 'subscription'
     const isTopUp = normalizedPlanType === 'TOP_UP';
     const sessionMode = isTopUp ? 'payment' : 'subscription';
+    console.log(`Creating Session for User: ${user._id}, Plan: ${normalizedPlanType}`);
 
     const sessionParams = {
         line_items: [{ price: priceId, quantity: 1 }],
@@ -194,10 +195,14 @@ export const handleWebhook = async (event) => {
     if (!stripe) return;
 
     try {
+                console.log(`🔔 Webhook Received: ${event.type}`);
+
         switch (event.type) {
             
             // 1. One-Time Payment (Top-Up) or First Sub Payment
             case 'checkout.session.completed':
+                                console.log("   -> Processing Checkout Session...");
+
                 const session = event.data.object;
                 await handleCheckoutCompleted(session);
 
@@ -210,6 +215,8 @@ export const handleWebhook = async (event) => {
 
             // 2. Recurring Payment (Subscription Cycle)
             case 'invoice.payment_succeeded':
+                                console.log("   -> Processing Invoice Payment...");
+
                 const invoice = event.data.object;
                 
                 // Ensure valid billing reason
@@ -224,8 +231,13 @@ export const handleWebhook = async (event) => {
 
                     // B. Quota Reset (Renewal Only)
                     if (invoice.billing_reason === 'subscription_cycle') {
+                                            console.log("      -> Valid Billing Reason");
+
                         await handleSubscriptionRenewal(invoice);
                     }
+                    else {
+                    console.log("      -> Skipping (Not a subscription cycle)");
+                }
                 }
                 break;
         }
@@ -238,9 +250,12 @@ export const handleWebhook = async (event) => {
 
 // Helper: Handle Plan Updates / Top-Ups
 const handleCheckoutCompleted = async (session) => {
+        console.log("👉 handleCheckoutCompleted Started...");
+
     const userId = session.metadata.userId;
     const planType = session.metadata.planType;
     const amountTotal = session.amount_total / 100;
+    console.log(`   - Data: UserID=${userId}, Plan=${planType}, Amount=$${amountTotal}`);
 
     const user = await User.findById(userId);
     if (!user) return;
@@ -266,10 +281,12 @@ const handleCheckoutCompleted = async (session) => {
         }
         user.subscriptionStatus = 'active';
         await user.save();
+                    console.log("   ✅ User Updated Successfully");
+
     }
 
     // Save Transaction
-    await Transaction.create({
+   const newTxn = await Transaction.create({
         userId: user._id,
         stripeSessionId: session.id,
         amount: amountTotal,
@@ -277,6 +294,7 @@ const handleCheckoutCompleted = async (session) => {
         status: session.payment_status === 'paid' ? 'completed' : 'failed',
         paymentMethod: session.payment_method_types ? session.payment_method_types[0] : 'card'
     });
+    console.log("   ✅ Transaction Saved Successfully",newTxn);
 };
 
 const handleSubscriptionRenewal = async (invoice) => {
@@ -284,6 +302,7 @@ const handleSubscriptionRenewal = async (invoice) => {
     if (!user) return;
 
     console.log(`🔄 Monthly Renewal: Processing for ${user.email}`);
+    console.log("👉 handleSubscriptionRenewal Triggered");
 
     // 1. Get Base Plan Limit (e.g., Basic = 1000)
     // Note: Ensure PLAN_CREDITS is accessible here or re-defined
