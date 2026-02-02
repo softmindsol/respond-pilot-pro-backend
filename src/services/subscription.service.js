@@ -282,8 +282,7 @@ export const handleWebhook = async (event) => {
         }
     } catch (err) {
         console.error("🔥 Webhook Logic Crash:", err);
-        // Important: Error ko catch karke log karein, lekin throw na karein
-        // taake Stripe ko 200 OK mile aur wo retry na karta rahe.
+   
     }
 };
 
