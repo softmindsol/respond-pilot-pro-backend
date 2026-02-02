@@ -24,39 +24,116 @@ const generateAuthUrl = (userId) => {
     });
 };
 
-const handleCallback = async (code, userId) => {
+// channel Centeric
+export const handleCallback = async (code, userId) => {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // Fetch Channel Details
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-    const response = await youtube.channels.list({
-        part: 'snippet,contentDetails,statistics',
-        mine: true
+    const channelRes = await youtube.channels.list({ part: 'snippet', mine: true });
+    
+    if (!channelRes.data.items) throw new Error('No channel found');
+
+    const channelId = channelRes.data.items[0].id;
+    const channelName = channelRes.data.items[0].snippet.title;
+
+    // 1. Dhoondo ke kya ye Channel ID pehle se kisi ke paas hai?
+    const previousOwner = await User.findOne({ 
+        youtubeChannelId: channelId, 
+        _id: { $ne: userId } // Mujh se alag koi aur
     });
 
-    if (!response.data.items || response.data.items.length === 0) {
-        throw new Error('No YouTube channel found for this Google account.');
+    const currentUser = await User.findById(userId);
+
+    if (previousOwner) {
+        console.log(`🔄 Channel Centric Migration: Moving data from ${previousOwner.email} to ${currentUser.email}`);
+
+        // --- 🚀 STRATEGY: TRANSFER VALUE ---
+        
+        // A. Naye account ko purane account ka status de do
+        currentUser.plan = previousOwner.plan;
+        currentUser.repliesLimit = previousOwner.repliesLimit;
+        currentUser.repliesUsed = previousOwner.repliesUsed;
+        currentUser.affiliateTier = previousOwner.affiliateTier;
+        currentUser.notificationSettings = previousOwner.notificationSettings;
+        currentUser.tone = previousOwner.tone;
+        currentUser.customToneDescription = previousOwner.customToneDescription;
+        currentUser.advancedPersonaInstruction = previousOwner.advancedPersonaInstruction;
+
+        // B. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
+        previousOwner.youtubeChannelId = null;
+        previousOwner.youtubeChannelName = null;
+        previousOwner.youtubeRefreshToken = null;
+        previousOwner.isConnectedToYoutube = false;
+        previousOwner.plan = 'Free';
+        previousOwner.repliesLimit = 0; // Kyunke is channel ka quota transfer ho chuka hai
+        previousOwner.repliesUsed = 0;
+
+        await previousOwner.save();
+        console.log(`✅ Previous owner ${previousOwner.email} has been unlinked and reset.`);
+
+    } else {
+        // --- 🛡️ STRATEGY: ANTI-ABUSE CHECK ---
+        // Agar ye channel pehle kabhi system mein aya hi nahi (First time ever)
+        // To hi isay 50 free credits milenge.
+        
+        if (!currentUser.isOnboarded) {
+            // Check if this channel ID ever existed in our records (even if unlinked now)
+            // (Note: Iske liye aap ek 'ChannelHistory' table bhi bana sakte hain, 
+            // lekin filhal User table se hi check karte hain)
+            
+            currentUser.repliesLimit = 50; // Pehli baar ane par 50 credits
+        }
     }
 
-    const channel = response.data.items[0];
-
-    // Update User in DB
-    const user = await User.findById(userId);
-    if (!user) throw new Error('User not found.');
-
-    user.youtubeChannelId = channel.id;
-    user.youtubeChannelName = channel.snippet.title;
-    user.isConnectedToYoutube = true;
-
-    // Only save refresh token if it exists (usually only returned on first consent)
+    // 2. Finalize Connection for Current User
+    currentUser.youtubeChannelId = channelId;
+    currentUser.youtubeChannelName = channelName;
+    currentUser.isConnectedToYoutube = true;
+    
     if (tokens.refresh_token) {
-        user.youtubeRefreshToken = tokens.refresh_token;
+        currentUser.youtubeRefreshToken = tokens.refresh_token;
     }
 
-    await user.save();
-    return { channelName: channel.snippet.title };
+    await currentUser.save();
+
+    return { channelName };
 };
+
+// email-centric
+// const handleCallback = async (code, userId) => {
+//     const { tokens } = await oauth2Client.getToken(code);
+//     oauth2Client.setCredentials(tokens);
+
+//     // Fetch Channel Details
+//     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+//     const response = await youtube.channels.list({
+//         part: 'snippet,contentDetails,statistics',
+//         mine: true
+//     });
+
+//     if (!response.data.items || response.data.items.length === 0) {
+//         throw new Error('No YouTube channel found for this Google account.');
+//     }
+
+//     const channel = response.data.items[0];
+
+//     // Update User in DB
+//     const user = await User.findById(userId);
+//     if (!user) throw new Error('User not found.');
+
+//     user.youtubeChannelId = channel.id;
+//     user.youtubeChannelName = channel.snippet.title;
+//     user.isConnectedToYoutube = true;
+
+//     // Only save refresh token if it exists (usually only returned on first consent)
+//     if (tokens.refresh_token) {
+//         user.youtubeRefreshToken = tokens.refresh_token;
+//     }
+
+//     await user.save();
+//     return { channelName: channel.snippet.title };
+// };
 
 const getChannelComments = async (userId, pageToken = '', videoId = null) => {
     // 1. User fetch karein

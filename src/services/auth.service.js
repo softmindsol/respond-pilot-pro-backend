@@ -41,7 +41,7 @@ const register = async (userData) => {
         referredBy: referrerId, // 🔥 Yahan ID save hogi
         verificationOtp: hashedOtp,
         verificationOtpExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-        isVerified: false
+        isVerified: true
     });
 
     if (user) {
@@ -321,7 +321,7 @@ const verifyEmailOtp = async ({ email, otp }) => {
             console.log("   Has OTP:", !!anyUser.verificationOtp);
             console.log("   Is Verified:", anyUser.isVerified);
         }
-
+ 
         throw new Error('Invalid OTP or Email, or OTP expired (Email Verification)');
     }
 

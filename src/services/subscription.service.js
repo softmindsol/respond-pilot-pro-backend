@@ -5,7 +5,7 @@ import Transaction from '../models/transaction.model.js';
 
 // Initialize Stripe 
 let stripe;
-if (process.env.STRIPE_SECRET_KEY) { 
+if (process.env.STRIPE_SECRET_KEY) {
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
@@ -15,7 +15,7 @@ const PLAN_CREDITS = {
     'Pro': 5000,
     'PRO_PLUS': 15000,
     'TOP_UP': 500
-}; 
+};
 
 // Map Plans to Price IDs
 const PLAN_PRICES = {
@@ -30,9 +30,29 @@ export const createCheckoutSession = async (user, planType) => {
     if (!stripe) throw new Error("Stripe is not configured");
 
     const normalizedPlanType = Object.keys(PLAN_PRICES).find(key => key.toLowerCase() === planType.toLowerCase());
+
+
+    if (user.stripeSubscriptionId && normalizedPlanType !== 'TOP_UP') {
+        console.log("🔄 User already subscribed. Redirecting to Portal for Swap.");
+
+        // Portal session create karein jahan user direct 'Change Plan' kar sake
+        return await stripe.billingPortal.sessions.create({
+            customer: user.stripeCustomerId,
+            return_url: `${process.env.CLIENT_URL}/dashboard`,
+            // Optional: Agar aap direct user ko upgrade page par bhejna chahte hain
+            flow_data: {
+                type: 'subscription_update',
+                subscription_update: {
+                    subscription: user.stripeSubscriptionId,
+                },
+            },
+        });
+    }
+
+
     if (planType.toLowerCase() === 'free') return null;
     if (!normalizedPlanType) throw new Error(`Invalid plan type`);
-    
+
     const priceId = PLAN_PRICES[normalizedPlanType];
     if (!priceId) throw new Error(`Price ID missing`);
 
@@ -61,15 +81,28 @@ export const createCheckoutSession = async (user, planType) => {
 
     const sessionParams = {
         line_items: [{ price: priceId, quantity: 1 }],
-        mode: sessionMode, 
+        mode: sessionMode,
         success_url: `${process.env.CLIENT_URL}/dashboard?checkout_success=true&plan=${normalizedPlanType}`,
         cancel_url: `${process.env.CLIENT_URL}/pricing?canceled=true`,
         metadata: {
             userId: user._id.toString(),
             planType: normalizedPlanType,
-            referrerId: user.referredBy ? user.referredBy.toString() : null 
+            youtubeChannelId: user.youtubeChannelId,
+            referrerId: user.referredBy ? user.referredBy.toString() : null
         }
     };
+
+    console.log("📤 Sending Metadata to Stripe:", sessionParams.metadata);
+
+    // 🔥 Recurring plans ke liye subscription_data mein bhi metadata dalna zaroori hai
+    if (sessionMode === 'subscription') {
+        sessionParams.subscription_data = {
+            metadata: {
+                youtubeChannelId: user.youtubeChannelId,
+                userId: user._id.toString()
+            }
+        };
+    }
 
     try {
         const session = await stripe.checkout.sessions.create({
@@ -82,7 +115,7 @@ export const createCheckoutSession = async (user, planType) => {
         if (error.code === 'resource_missing' || (error.message && error.message.includes('No such customer'))) {
             console.log("⚠️ Stripe Customer not found (invalid ID). Creating new one...");
             customerId = await createNewCustomer();
-            
+
             // Retry with new customer ID
             const session = await stripe.checkout.sessions.create({
                 customer: customerId,
@@ -119,7 +152,7 @@ export const createCustomerPortalSession = async (user) => {
 // const processAffiliateCommission = async (session) => {
 //     const customerEmail = session.customer_details?.email;
 //     const amountPaid = session.amount_total / 100; // Cents to Dollars
-    
+
 //     if (!customerEmail || amountPaid <= 0) return;
 
 //     console.log(`Checking commission for: ${customerEmail}`);
@@ -129,7 +162,7 @@ export const createCustomerPortalSession = async (user) => {
 
 //     const referrer = await User.findById(user.referredBy);
 //     if (referrer && referrer.affiliateTier !== 'none') {
-        
+
 //         let rate = referrer.affiliateTier === 'tier1' ? 0.30 : 0.15;
 //         const commissionEarned = parseFloat((amountPaid * rate).toFixed(2));
 
@@ -195,13 +228,13 @@ export const handleWebhook = async (event) => {
     if (!stripe) return;
 
     try {
-                console.log(`🔔 Webhook Received: ${event.type}`);
+        console.log(`🔔 Webhook Received: ${event.type}`);
 
         switch (event.type) {
-            
+
             // 1. One-Time Payment (Top-Up) or First Sub Payment
             case 'checkout.session.completed':
-                                console.log("   -> Processing Checkout Session...");
+                console.log("   -> Processing Checkout Session...");
 
                 const session = event.data.object;
                 await handleCheckoutCompleted(session);
@@ -212,32 +245,38 @@ export const handleWebhook = async (event) => {
                     await processCommission(session.customer_details?.email, amount, session.id);
                 }
                 break;
-
+            case 'customer.subscription.deleted':
+                await handleSubscriptionDeleted(event.data.object);
+                break;
+            // 🔥 NEW CASE: Plan Swap/Update
+            case 'customer.subscription.updated':
+                await handleSubscriptionUpdated(event.data.object);
+                break;
             // 2. Recurring Payment (Subscription Cycle)
             case 'invoice.payment_succeeded':
-                                console.log("   -> Processing Invoice Payment...");
+                console.log("   -> Processing Invoice Payment...");
 
                 const invoice = event.data.object;
-                
+
                 // Ensure valid billing reason
                 if (invoice.billing_reason === 'subscription_create' || invoice.billing_reason === 'subscription_cycle') {
-                    
+
                     // A. Commission
                     const amount = invoice.amount_paid / 100;
                     // Invoice ID ko fallback use karein agar payment_intent null ho
                     const paymentId = invoice.payment_intent || invoice.id;
-                    
+
                     await processCommission(invoice.customer_email, amount, paymentId);
 
                     // B. Quota Reset (Renewal Only)
+                    // if (invoice.billing_reason === 'subscription_cycle') {
+                    //     await handleSubscriptionRenewal(invoice);
+                    // }
+                    // 🔥 CHANNEL-CENTRIC RENEWAL
                     if (invoice.billing_reason === 'subscription_cycle') {
-                                            console.log("      -> Valid Billing Reason");
-
                         await handleSubscriptionRenewal(invoice);
                     }
-                    else {
-                    console.log("      -> Skipping (Not a subscription cycle)");
-                }
+
                 }
                 break;
         }
@@ -250,7 +289,7 @@ export const handleWebhook = async (event) => {
 
 // Helper: Handle Plan Updates / Top-Ups
 const handleCheckoutCompleted = async (session) => {
-        console.log("👉 handleCheckoutCompleted Started...");
+    console.log("👉 handleCheckoutCompleted Started...");
 
     const userId = session.metadata.userId;
     const planType = session.metadata.planType;
@@ -260,6 +299,10 @@ const handleCheckoutCompleted = async (session) => {
     const user = await User.findById(userId);
     if (!user) return;
 
+    // 🔥 SAVE SUBSCRIPTION ID (Zaroori hai swapping ke liye)
+    if (session.mode === 'subscription') {
+        user.stripeSubscriptionId = session.subscription;
+    }
     const creditsToAdd = PLAN_CREDITS[planType] || 0;
 
     if (creditsToAdd > 0) {
@@ -275,18 +318,18 @@ const handleCheckoutCompleted = async (session) => {
 
             // Pro Plus Auto-Enable
             if (planType === 'PRO_PLUS' || planType === 'Pro Plus') {
-                 if (!user.notificationSettings) user.notificationSettings = {};
-                 user.notificationSettings.aiCrisisDetection = true;
+                if (!user.notificationSettings) user.notificationSettings = {};
+                user.notificationSettings.aiCrisisDetection = true;
             }
         }
         user.subscriptionStatus = 'active';
         await user.save();
-                    console.log("   ✅ User Updated Successfully");
+        console.log("   ✅ User Updated Successfully");
 
     }
 
     // Save Transaction
-   const newTxn = await Transaction.create({
+    const newTxn = await Transaction.create({
         userId: user._id,
         stripeSessionId: session.id,
         amount: amountTotal,
@@ -294,59 +337,149 @@ const handleCheckoutCompleted = async (session) => {
         status: session.payment_status === 'paid' ? 'completed' : 'failed',
         paymentMethod: session.payment_method_types ? session.payment_method_types[0] : 'card'
     });
-    console.log("   ✅ Transaction Saved Successfully",newTxn);
+    console.log("   ✅ Transaction Saved Successfully", newTxn);
 };
 
+// const handleSubscriptionRenewal = async (invoice) => {
+//     const user = await User.findOne({ email: invoice.customer_email });
+//     if (!user) return;
+
+//     console.log(`🔄 Monthly Renewal: Processing for ${user.email}`);
+//     console.log("👉 handleSubscriptionRenewal Triggered");
+
+//     // 1. Get Base Plan Limit (e.g., Basic = 1000)
+//     // Note: Ensure PLAN_CREDITS is accessible here or re-defined
+//     const PLAN_CREDITS = {
+//         'Basic': 1000,
+//         'Pro': 5000,
+//         'PRO_PLUS': 15000,
+//         'Pro Plus': 15000, // Safe casing
+//         'TOP_UP': 500
+//     };
+
+//     const basePlanLimit = PLAN_CREDITS[user.plan] || 0;
+//     const currentLimit = user.repliesLimit || 0;
+//     const used = user.repliesUsed || 0;
+
+//     // 2. Calculate Remaining Top-Up
+//     let remainingTopUp = 0;
+
+//     // Agar Current Limit > Base Plan hai, iska matlab User ke paas Top-Up tha
+//     if (currentLimit > basePlanLimit) {
+
+//         // Total Top-Up jo user ke paas tha
+//         const totalTopUpOwned = currentLimit - basePlanLimit;
+
+//         // Check karein ke usne Top-Up mein se kitna use kiya?
+//         // Logic: Pehle Plan ke credits use hotay hain, phir Top-Up ke.
+
+//         const usageFromTopUp = Math.max(0, used - basePlanLimit); 
+//         // Example: Agar 1200 use kiye aur Plan 1000 ka tha, to 200 Top-Up se gaye.
+
+//         remainingTopUp = Math.max(0, totalTopUpOwned - usageFromTopUp);
+//         // Example: Total Top-Up 500 tha, 200 use hua, to 300 bacha.
+//     }
+
+//     console.log(`📊 Renewal Math: Base: ${basePlanLimit}, Prev Top-Up Left: ${remainingTopUp}`);
+
+//     // 3. Apply New Limit (New Month Plan + Old Remaining Top-Up)
+//     user.repliesUsed = 0; // Usage reset (New Month)
+//     user.repliesLimit = basePlanLimit + remainingTopUp; // Limit = Plan + Carry Over
+
+//     await user.save();
+//     console.log(`✅ Subscription Renewed. New Limit: ${user.repliesLimit}`);
+// };
+
 const handleSubscriptionRenewal = async (invoice) => {
-    const user = await User.findOne({ email: invoice.customer_email });
+    try {
+        // 1. Pehle Stripe se Subscription object mangwayen taake metadata (Channel ID) mil sakay
+        const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+        const channelId = subscription.metadata.youtubeChannelId;
+
+        if (!channelId) {
+            console.log("⚠️ No Channel ID in subscription metadata, falling back to email.");
+            // Fallback to email if metadata is missing
+            const user = await User.findOne({ email: invoice.customer_email });
+            if (!user) return;
+            return await resetUserQuota(user);
+        }
+
+        // 🔥 2. CHANNEL-CENTRIC: Dhoondo ke AAJ is channel ka malik kaun hai?
+        const user = await User.findOne({ youtubeChannelId: channelId });
+        if (!user) {
+            console.log(`❌ No user found owning channel: ${channelId}`);
+            return;
+        }
+
+        await resetUserQuota(user);
+    } catch (error) {
+        console.error("Renewal Logic Error:", error.message);
+    }
+};
+
+
+const handleSubscriptionUpdated = async (subscription) => {
+    const customerId = subscription.customer;
+    const user = await User.findOne({ stripeCustomerId: customerId });
     if (!user) return;
 
-    console.log(`🔄 Monthly Renewal: Processing for ${user.email}`);
-    console.log("👉 handleSubscriptionRenewal Triggered");
+    // Stripe se naye plan ka Price ID nikalen
+    const newPriceId = subscription.items.data[0].price.id;
 
-    // 1. Get Base Plan Limit (e.g., Basic = 1000)
-    // Note: Ensure PLAN_CREDITS is accessible here or re-defined
-    const PLAN_CREDITS = {
-        'Basic': 1000,
-        'Pro': 5000,
-        'PRO_PLUS': 15000,
-        'Pro Plus': 15000, // Safe casing
-        'TOP_UP': 500
-    };
+    // Price ID se Plan Name match karein (Map reverse)
+    const planName = Object.keys(PLAN_PRICES).find(key => PLAN_PRICES[key] === newPriceId);
+
+    if (planName) {
+        console.log(`🚀 Plan Swapped for ${user.email}: Now on ${planName}`);
+        user.plan = planName;
+        user.repliesLimit = PLAN_CREDITS[planName];
+        // Note: Swapping par hum usually usage 0 nahi karte, 
+        // kyunke user mahine ke beech mein bhi upgrade kar sakta hai.
+        await user.save();
+    }
+};
+// Sub-helper for renewal logic
+const resetUserQuota = async (user) => {
+    console.log(`🔄 Monthly Renewal: Resetting quota for ${user.email}`);
 
     const basePlanLimit = PLAN_CREDITS[user.plan] || 0;
     const currentLimit = user.repliesLimit || 0;
     const used = user.repliesUsed || 0;
 
-    // 2. Calculate Remaining Top-Up
+    // 🔥 TOP-UP ROLLOVER LOGIC
     let remainingTopUp = 0;
-
-    // Agar Current Limit > Base Plan hai, iska matlab User ke paas Top-Up tha
     if (currentLimit > basePlanLimit) {
-        
-        // Total Top-Up jo user ke paas tha
         const totalTopUpOwned = currentLimit - basePlanLimit;
-        
-        // Check karein ke usne Top-Up mein se kitna use kiya?
-        // Logic: Pehle Plan ke credits use hotay hain, phir Top-Up ke.
-        
-        const usageFromTopUp = Math.max(0, used - basePlanLimit); 
-        // Example: Agar 1200 use kiye aur Plan 1000 ka tha, to 200 Top-Up se gaye.
-        
+        const usageFromTopUp = Math.max(0, used - basePlanLimit);
         remainingTopUp = Math.max(0, totalTopUpOwned - usageFromTopUp);
-        // Example: Total Top-Up 500 tha, 200 use hua, to 300 bacha.
     }
 
-    console.log(`📊 Renewal Math: Base: ${basePlanLimit}, Prev Top-Up Left: ${remainingTopUp}`);
-
-    // 3. Apply New Limit (New Month Plan + Old Remaining Top-Up)
-    user.repliesUsed = 0; // Usage reset (New Month)
-    user.repliesLimit = basePlanLimit + remainingTopUp; // Limit = Plan + Carry Over
-
+    user.repliesUsed = 0;
+    user.repliesLimit = basePlanLimit + remainingTopUp;
     await user.save();
-    console.log(`✅ Subscription Renewed. New Limit: ${user.repliesLimit}`);
+    console.log(`✅ Limit Reset. New Limit: ${user.repliesLimit}`);
 };
 
+const handleSubscriptionDeleted = async (subscription) => {
+    const customerId = subscription.customer;
+    const user = await User.findOne({ stripeCustomerId: customerId });
+
+    if (user) {
+        console.log(`📉 Subscription Expired for: ${user.email}. Downgrading to Free.`);
+
+        // 1. Plan wapis 'Free' kar dein
+        user.plan = 'Free';
+
+        // 2. Limit wapis Free wali (50) kar dein
+        user.repliesLimit = 50;
+
+        // 3. Status update
+        user.subscriptionStatus = 'inactive';
+        user.stripeSubscriptionId = null; // ID clear kar dein taake wo naya plan le sake
+
+        await user.save();
+    }
+};
 
 
 export default {
