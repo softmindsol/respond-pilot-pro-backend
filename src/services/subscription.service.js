@@ -83,7 +83,7 @@ export const createCheckoutSession = async (user, planType) => {
         line_items: [{ price: priceId, quantity: 1 }],
         mode: sessionMode,
         success_url: `${process.env.CLIENT_URL}/dashboard?checkout_success=true&plan=${normalizedPlanType}`,
-        cancel_url: `${process.env.CLIENT_URL}/pricing?canceled=true`,
+        cancel_url: `${process.env.CLIENT_URL}/plan-billing?canceled=true`,
         metadata: {
             userId: user._id.toString(),
             planType: normalizedPlanType,

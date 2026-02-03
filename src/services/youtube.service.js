@@ -40,7 +40,7 @@ export const handleCallback = async (code, userId) => {
     // 1. Dhoondo ke kya ye Channel ID pehle se kisi ke paas hai?
     const previousOwner = await User.findOne({ 
         youtubeChannelId: channelId, 
-        _id: { $ne: userId } // Mujh se alag koi aur
+        _id: { $ne: userId } 
     });
 
     const currentUser = await User.findById(userId);
