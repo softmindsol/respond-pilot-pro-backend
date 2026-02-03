@@ -43,13 +43,10 @@ export const handleCallback = async (code, userId) => {
         _id: { $ne: userId } // Mujh se alag koi aur
     });
 
-    console.log("previousOwner", previousOwner);
     const currentUser = await User.findById(userId);
 
     if (previousOwner) {
         console.log(`🔄 Channel Centric Migration: Moving data from ${previousOwner.email} to ${currentUser.email}`);
-
-        // --- 🚀 STRATEGY: TRANSFER VALUE ---
         
         // A. Naye account ko purane account ka status de do
         currentUser.plan = previousOwner.plan;
@@ -61,12 +58,12 @@ export const handleCallback = async (code, userId) => {
         currentUser.customToneDescription = previousOwner.customToneDescription;
         currentUser.advancedPersonaInstruction = previousOwner.advancedPersonaInstruction;
 
-                // B. 🔥 NEW: Stripe & Subscription Migration
+        // B. 🔥 NEW: Stripe & Subscription Migration
          currentUser.stripeCustomerId = previousOwner.stripeCustomerId;
         currentUser.stripeSubscriptionId = previousOwner.stripeSubscriptionId;
         currentUser.subscriptionStatus = previousOwner.subscriptionStatus;
 
-        // B. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
+        // C. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
         previousOwner.youtubeChannelId = null;
         previousOwner.youtubeChannelName = null;
         previousOwner.youtubeRefreshToken = null;
