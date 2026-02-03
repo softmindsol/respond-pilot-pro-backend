@@ -95,7 +95,7 @@ const userSchema = mongoose.Schema(
         },
         stripeCustomerId: {
             type: String,
-        },
+        }, 
         stripeSubscriptionId: {
             type: String,
         },

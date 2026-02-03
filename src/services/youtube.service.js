@@ -43,6 +43,7 @@ export const handleCallback = async (code, userId) => {
         _id: { $ne: userId } // Mujh se alag koi aur
     });
 
+    console.log("previousOwner", previousOwner);
     const currentUser = await User.findById(userId);
 
     if (previousOwner) {
@@ -59,6 +60,11 @@ export const handleCallback = async (code, userId) => {
         currentUser.tone = previousOwner.tone;
         currentUser.customToneDescription = previousOwner.customToneDescription;
         currentUser.advancedPersonaInstruction = previousOwner.advancedPersonaInstruction;
+
+                // B. 🔥 NEW: Stripe & Subscription Migration
+         currentUser.stripeCustomerId = previousOwner.stripeCustomerId;
+        currentUser.stripeSubscriptionId = previousOwner.stripeSubscriptionId;
+        currentUser.subscriptionStatus = previousOwner.subscriptionStatus;
 
         // B. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
         previousOwner.youtubeChannelId = null;
