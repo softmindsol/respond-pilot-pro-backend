@@ -96,6 +96,34 @@ const postReply = async (req, res) => {
     }
 };
 
+const getSyncedComments = async (req, res) => {
+    try {
+        const { videoId, pageToken,refresh } = req.query;
+        if (!videoId) {
+            return res.status(400).json({ message: 'Video ID is required.' });
+        }
+
+        
+        // Ensure user has youtube tokens
+        if (!req?.user?.isConnectedToYoutube) {
+             return res.status(400).json({ message: 'User is not connected to YouTube.' });
+        }
+
+        
+        const userWithToken = await User.findById(req.user._id).select('+youtubeRefreshToken');
+        if (!userWithToken || !userWithToken.isConnectedToYoutube || !userWithToken.youtubeRefreshToken) {
+             return res.status(400).json({ message: 'User is not connected to YouTube or Token is missing.' });
+        }
+
+        const comments = await youtubeService.getSmartComments(userWithToken, videoId,pageToken,refresh);
+        res.json(comments);
+
+    } catch (error) {
+        console.error("Sync Comments Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const disconnectChannel = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -124,5 +152,6 @@ export default {
     getComments,
     getVideos,
     postReply,
+    getSyncedComments,
     disconnectChannel
 };

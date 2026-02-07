@@ -49,18 +49,18 @@ const register = async (userData) => {
         const message = `Your verification OTP is ${otp}. It expires in 24 hours.`;
         const html = verifyEmailTemplate(name, otp);
 
-        try {
-            await sendEmail({
-                email: user.email,
-                subject: 'Verify Your Email - Respond Pilot Pro',
-                message,
-                html
-            });
-        } catch (error) {
-            // If email fails, we might want to delete the user or just let them resend code later.
-            // For now, we'll log it but keep the user created so they can try "Resend OTP".
-            console.error("Email sending failed:", error);
-        }
+        // try {
+        //     await sendEmail({
+        //         email: user.email,
+        //         subject: 'Verify Your Email - Respond Pilot Pro',
+        //         message,
+        //         html
+        //     });
+        // } catch (error) {
+        //     // If email fails, we might want to delete the user or just let them resend code later.
+        //     // For now, we'll log it but keep the user created so they can try "Resend OTP".
+        //     console.error("Email sending failed:", error);
+        // }
 
         return {
             _id: user._id,

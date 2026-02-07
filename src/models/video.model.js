@@ -10,10 +10,14 @@ const videoSchema = new mongoose.Schema({
     title: { type: String },
     thumbnail: { type: String },
     publishedAt: { type: Date },
+        nextPageToken: { type: String, default: null } 
+
 }, { timestamps: true });
 
 // Indexing for faster queries
-videoSchema.index({ user: 1, publishedAt: -1 });
+videoSchema.index({ user: 1, videoId: 1 }, { unique: true });
 
+// Fast sorting for dashboard
+videoSchema.index({ user: 1, publishedAt: -1 });
 const Video = mongoose.model('Video', videoSchema);
 export default Video;
