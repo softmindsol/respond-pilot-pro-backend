@@ -480,14 +480,20 @@ const postReplyToComment = async (userId, commentId, replyText) => {
             }
         });
 
-        // 4. Increment Count & Save
-        user.repliesUsed += 1;
-        await user.save();
+        // 4. Increment Count Correctly (Atomic Update for Concurrency)
+        // Pehle hum `user.repliesUsed += 1; await user.save();` kar rahe thay.
+        // Jab multiple API calls ek sath aati hain (parallel), to purana method race condition cause karta hai.
+        // Isliye hum atomic `$inc` use karenge jo direct DB level par update karega.
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $inc: { repliesUsed: 1 } },
+            { new: true } // Return updated document
+        );
 
         return {
             ...response.data,
-            repliesUsed: user.repliesUsed, // Frontend ko update bhejne ke liye
-            repliesLimit: user.repliesLimit
+            repliesUsed: updatedUser.repliesUsed, // Frontend ko update bhejne ke liye
+            repliesLimit: updatedUser.repliesLimit
         };
 
     } catch (error) {

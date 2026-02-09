@@ -197,7 +197,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         const responseText = await llmClient({
             model: 'gemini-2.5-flash',
             prompt,
-            temperature: 0.7,
+            temperature: 0.4, // 🔥 Lowered for stability
             maxTokens: 1000,
             responseMimeType: 'application/json'
         });
@@ -205,11 +205,35 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         // 7. Parse Response
         let aiResult;
         try {
-            const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            // Remove markdown code blocks if present
+            let cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            // Sometimes AI adds text before/after JSON, extract the JSON object
+            const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                cleanedText = jsonMatch[0];
+            }
+
             aiResult = JSON.parse(cleanedText);
         } catch (e) {
             console.warn("AI JSON Parse Failed", e);
-            aiResult = { status: "safe", reply: responseText };
+            console.log("Raw Response:", responseText);
+
+            // 🔥 Fallback: Extract 'reply' field manually using Regex if JSON is broken/truncated
+            const replyMatch = responseText.match(/"reply":\s*"([\s\S]*?)"/);
+            
+            if (replyMatch && replyMatch[1]) {
+                aiResult = { 
+                    status: "safe", 
+                    reply: replyMatch[1] 
+                };
+            } else {
+                 // If total failure, just return text but clean up JSON-like artifacts
+                 aiResult = { 
+                    status: "safe", 
+                    reply: responseText.replace(/[{}]/g, '').replace(/"status":\s*"safe",?/g, '').replace(/"reply":/g, '').trim() 
+                };
+            }
         }
 
         // 8. Handle Notifications

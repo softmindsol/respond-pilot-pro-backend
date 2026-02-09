@@ -79,16 +79,13 @@ const postReply = async (req, res) => {
 
         // user.repliesUsed = (user.repliesUsed || 0) + 1;
         // await user.save();
-        const updatedUser = await User.findByIdAndUpdate(
-            user._id,
-            { $inc: { repliesUsed: 1 } }, // Increase by 1
-            { new: true } // Humein updated user wapis chahiye
-        );
+        // 🔥 FIX: Service already increments the count. Don't double charge!
+        // const updatedUser = await User.findByIdAndUpdate(...) <- REMOVED
         res.json({
             ...data,
             usage: {
                 // Frontend ko updated count bhejen taake UI foran update ho
-                repliesUsed: updatedUser.repliesUsed
+                repliesUsed: data.repliesUsed
             }
         });
     } catch (error) {
