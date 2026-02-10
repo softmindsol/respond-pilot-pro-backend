@@ -7,7 +7,7 @@ const commentSchema = new mongoose.Schema({
     authorName: String,
     authorAvatar: String,
     text: String,
-        replies: { type: Array, default: [] }, 
+    replies: { type: Array, default: [] }, 
     status: { type: String, enum: ['Pending', 'Replied', 'Flagged'], default: 'Pending', index: true },
     publishedAt: { type: Date, index: true },
     // For automatic cleanup: index expires documents after 30 days

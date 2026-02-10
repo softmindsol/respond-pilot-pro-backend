@@ -22,10 +22,12 @@ const loginUser = async (req, res) => {
         const user = await authService.login(validatedData);
         res.json(user);
     } catch (error) {
+
+    console.log("error:",error);
         if (error.name === 'ZodError') {
             res.status(400).json({ message: error.errors });
         } else {
-            res.status(401).json({ message: error.message });
+            res.status(400).json({ message: error.message });
         }
     }
 };
@@ -39,7 +41,7 @@ const googleAuth = async (req, res) => {
         const user = await authService.googleLogin(idToken);
         res.json(user);
     } catch (error) {
-        res.status(401).json({ message: error.message });
+        res.status(400).json({ message: error.message });
     }
 };
 
@@ -225,7 +227,7 @@ const loginAdmin = async (req, res) => {
         if (error.name === 'ZodError') {
             res.status(400).json({ message: error.errors });
         } else {
-            res.status(401).json({ message: error.message });
+            res.status(400).json({ message: error.message });
         }
     }
 };
