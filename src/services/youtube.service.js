@@ -610,7 +610,6 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
     // - User ne manually "Refresh" dabaya hai
     const shouldFetchFromYouTube = dbCount === 0 || pageToken || refresh;
     
-    console.log("🚀 refresh: ", refresh);
     let ytNextPageToken = null;
 
     if (shouldFetchFromYouTube) {

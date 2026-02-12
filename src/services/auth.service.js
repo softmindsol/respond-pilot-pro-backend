@@ -76,7 +76,12 @@ const register = async (userData) => {
 
 const login = async ({ email, password }) => {
     const user = await User.findOne({ email: email.toLowerCase() });
-    if (user && (await user.matchPassword(password))) {
+
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (await user.matchPassword(password)) {
         if (!user.isVerified) {
             throw new Error('Please verify your email address');
         }
@@ -100,7 +105,7 @@ const login = async ({ email, password }) => {
             token: generateToken(user._id),
         };
     } else {
-        throw new Error('Invalid email or password');
+        throw new Error('Invalid credentials');
     }
 };
 
@@ -463,7 +468,7 @@ const updatePassword = async (userId, { currentPassword, newPassword }) => {
 
     return { message: 'Password updated successfully' };
 };
-
+ 
 export default {
     verifyResetOtp,
     register,
