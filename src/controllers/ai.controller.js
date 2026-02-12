@@ -5,21 +5,21 @@ import { PERSONAS } from '../config/personas.js';
 
 // --- 🔥 NEW: HOOK DIVERSITY STRATEGIES ---
 const HOOK_STRATEGIES = [
-    "Direct: Jump straight into the answer or point without any greeting.",
-    "Observation: Start with a specific detail about what the user mentioned.",
-    "Questioning: Start by asking the user a thought-provoking follow-up question.",
-    "Hype: Start with high-energy reactions like 'Love this!' or 'Facts!'.",
-    "Casual: Start with 'Exactly,' or 'Total agreement on this,'",
-    "Curious: Start with 'That's an interesting perspective,'",
-    "Mentor: Start with 'Great catch, here is why that happens:'",
-    "Friendly: Use the author's name immediately like 'Hey @[Name],'",
-    "Reactionary: Use just a single punchy emoji as the opening.",
-    "Analytical: Start with 'To address your point about...'",
-    "Excited: Start with 'This is exactly what I was hoping someone would notice!'",
-    "Brief: Keep it under 15 words total.",
-    "Opinionated: Start with 'Personally, I feel...'",
-    "Action-Oriented: Start with 'On it!' or 'Adding this to my notes!'",
-    "Minimalist: No greetings, no fluff, just the core value."
+    "Direct Answer: Jump into the solution/answer immediately.",
+    "Specific Acknowledgment: Mention a keyword the user used in the first 3 words.",
+    "The Counter-Point: Start with 'Actually,' or 'The interesting thing is,'",
+    "The Agreement: Start with 'Spot on.', 'Exactly.', or 'Couldn't agree more.'",
+    "The Deep Dive: Start with 'The reason behind that is...'",
+    "Community Shoutout: Use author name immediately: 'Hey @[authorName],'",
+    "Reactionary Emoji: Start with 1-2 punchy emojis, then the text.",
+    "Direct Reaction: Start with 'Facts.', 'Wild.', 'Huge.', or 'Legacy move.'",
+    "The Follow-up: Start by asking them a thought-provoking question back.",
+    "The Insight: 'I noticed the same thing when I was making the video...'",
+    "The Correction: 'Close! It's actually more about...'",
+    "The Hype: 'Let's go! Glad someone caught that detail.'",
+    "Minimalist: Start with no greeting, just the core message.",
+    "The Comparison: 'This reminds me of when...'",
+    "The Perspective: 'That's a unique way to look at it!'"
 ];
 
 // Utils 
@@ -63,7 +63,7 @@ const TONE_TYPES = {
     CUSTOM: 'custom'
 };
 
-// 🔥 UPDATED PROMPT GENERATOR (Context & Hook Aware)
+
 const generateReplyPrompt = ({
     comment,
     toneType,
@@ -71,177 +71,146 @@ const generateReplyPrompt = ({
     videoTitle,
     authorName,
     isSafetyEnabled,
-    hookStrategy // 🔥 New Parameter
+    hookStrategy
 }) => {
-    let toneInstruction = "";
-
-    if (PERSONAS[toneType]) {
-        toneInstruction = PERSONAS[toneType].prompt;
-    } else if (toneType === TONE_TYPES.ADVANCED_PERSONA) {
-        toneInstruction = `Your Persona: "${toneContent || 'Helpful creator.'}"`;
-    } else if (toneType === TONE_TYPES.CUSTOM) {
-        toneInstruction = `Custom Style: "${toneContent || 'Professional.'}"`;
-    } else {
-        toneInstruction = PERSONAS['professional'].prompt;
-    }
-
-    const taskInstructions = isSafetyEnabled
-        ? `1. **Analyze Safety:** Check for hate, spam, or high negativity.
-           2. **Generate Reply:** If safe, reply. If flagged, return empty reply.`
-        : `1. **Generate Reply:** Reply immediately. Always set status "safe".`;
-
-    const statusInstruction = isSafetyEnabled ? `"safe" | "flagged"` : `"safe"`;
+    const basePersona = PERSONAS[toneType]?.prompt || PERSONAS['professional'].prompt;
 
     return `
-    You are a professional YouTube Creator. You are NOT an AI assistant or a customer service bot.
+    ${basePersona}
+    ${toneContent ? `Additional Tone Instructions: ${toneContent}` : ""}
+
+    **STRICT OPERATING PROCEDURES (US MARKET STANDARD):**
+   1. **CRITIQUE DETECTION (SMART DEFENSE):** 
+       - If @${authorName} is skeptical, doubts your strategy, or gives negative feedback about the video/content:
+       - ACTION: Do NOT apologize. Do NOT be a bot. Write a logical, short, and firm defense of your position.
+       - STATUS: You MUST set "status" to "flagged".
     
-    **PERSONALITY:**
-    ${toneInstruction}
+    2. **COMPLETENESS RULE:**
+       - Every response must be 1 to 3 FULL sentences. 
+       - End with a period (.), exclamation mark (!), or question mark (?). 
+       - NEVER stop mid-sentence.
 
-    **CRITICAL ANTI-REPETITION RULES:**
-    1. NEVER start with "Thank you for the comment," "I appreciate your feedback," or "Thanks for watching." These phrases are BANNED.
-    2. VARIETY: For this specific reply, use this opening strategy: [${hookStrategy}].
-    3. CONTEXT-FIRST: If the comment is a question, DO NOT greet. Answer the question immediately.
-    4. HUMAN TOUCH: Use sentence fragments, varied lengths, and natural flow. Avoid "robotic politeness."
-    5. MULTILANGUAGE: Detect the comment language and reply in that EXACT same language.
+    3. **BANNED PHRASES:**
+       - "Thank you for the comment", "Thanks for watching", "I appreciate your feedback".
 
-    Video: ${videoTitle || 'Current Video'}
-    Comment by @${authorName || 'Viewer'}: "${comment}"
+    4. **OPENING STRIKE:**
+       - Start your message using this strategy: [${hookStrategy}]
+       - Jump straight to the point. No bot-filler.
 
-    **TASK:**
-    ${taskInstructions}
+    5. **MULTILANGUAGE:** 
+       - Detect the comment language and reply in the EXACT SAME language.
 
-    **OUTPUT FORMAT (JSON ONLY):**
+    Video Context: "${videoTitle || 'Current Video'}"
+    Target User: @${authorName || 'Viewer'}
+    User Input: "${comment}"
+
+    **OUTPUT FORMAT (STRICT JSON ONLY):**
     {
-        "status": ${statusInstruction},
-        "reply": "Your unique response here"
+        "status": "safe" | "flagged",
+        "reply": "Your full text response here"
     }
     `;
 };
 
 export const generateReply = asyncHandler(async (req, res, next) => {
-    const { comment: comment, tone, videoTitle, authorName, commentId } = req.body;
+    const { comment, tone, videoTitle, authorName, commentId } = req.body;
     const user = req.user;
 
-    if (isGibberish(comment)) {
-        return handleError(next, 'Invalid comment.', STATUS_CODES.BAD_REQUEST);
+    if (!comment || comment.trim().length < 2) {
+        return handleError(next, 'Comment is too short.', STATUS_CODES.BAD_REQUEST);
     }
 
-    const limit = user.repliesLimit || 0;
+    // 1. LIMIT CHECK
     const used = user.repliesUsed || 0;
-
+    const limit = user.repliesLimit || 50;
     if (user.affiliateTier !== 'tier1' && used >= limit) {
         return handleError(next, `Usage limit reached.`, STATUS_CODES.FORBIDDEN);
     }
 
-    let requestedToneType = (tone || user.tone || 'professional').toLowerCase();
+    // 2. TONE RESOLUTION
+    const requestedToneType = (tone || user.tone || 'professional').toLowerCase();
+    let toneContent = requestedToneType === 'custom' ? user.customToneDescription : 
+                      requestedToneType === 'advanced_persona' ? user.advancedPersonaInstruction : "";
 
-    let toneContent = "";
-    if (requestedToneType === TONE_TYPES.CUSTOM) {
-        toneContent = user.customToneDescription;
-    } else if (requestedToneType === TONE_TYPES.ADVANCED_PERSONA) {
-        toneContent = user.advancedPersonaInstruction;
-    }
-
-    // 🔥 RANDOM HOOK STRATEGY SELECTION
+    // 3. STYLE SEED
     const randomHook = HOOK_STRATEGIES[Math.floor(Math.random() * HOOK_STRATEGIES.length)];
 
     try {
         const isSafetyEnabled = user.notificationSettings?.aiCrisisDetection; 
 
-        const prompt = generateReplyPrompt({
-            comment,
-            toneType: requestedToneType,
-            toneContent,
-            videoTitle,
-            authorName,
-            isSafetyEnabled,
-            hookStrategy: randomHook // 🔥 Passing random strategy
-        });
-
+        // 4. LLM CALL (Gemini 2.0 Flash)
         const responseText = await llmClient({
-            model: 'gemini-2.5-flash',
-            prompt,
-            temperature: 0.9, // 🔥 High temperature for maximum variety
-            maxTokens: 1000,
+            model: 'gemini-2.0-flash', 
+            prompt: generateReplyPrompt({
+                comment,
+                toneType: requestedToneType,
+                toneContent,
+                videoTitle,
+                authorName,
+                isSafetyEnabled,
+                hookStrategy: randomHook
+            }),
+            temperature: 0.8, // Higher creativity for natural tone
+            maxTokens: 1024,
             responseMimeType: 'application/json'
         });
 
+        // 5. ROBUST PARSING & REPAIR
         let aiResult = { status: "safe", reply: "" };
-        
         try {
-            // Basic cleanup
-            let cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            const firstBrace = responseText.indexOf('{');
+            const lastBrace = responseText.lastIndexOf('}');
+            let cleanJson = responseText.substring(firstBrace, lastBrace + 1);
             
-            // JSON object extract karein
-            const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]);
-                
-                // Check if the reply itself contains nested JSON strings
-                let rawReply = parsed.reply || "";
-                
-                // 🔥 CLEANING ARTIFACTS: 
-                // Agar AI ne "status": "safe" waghera text ke andar likh diya hai toh usay ura do
-                rawReply = rawReply
-                    .replace(/\\"/g, '"') // Unescape quotes
-                    .replace(/\{"status":.*"reply":\s*"/gs, '') // Remove nested start
-                    .replace(/"status":.*"reply":/gs, '') // Remove without brackets
-                    .replace(/"\s*\}$/gs, '') // Remove trailing bracket
-                    .replace(/^"/, '').replace(/"$/, ''); // Remove surrounding quotes
+            if (!cleanJson.endsWith('}')) cleanJson += '"}';
+            const parsed = JSON.parse(cleanJson);
+            
+            let finalReply = (parsed.reply || "")
+                .replace(/^status:\s*flagged,?\s*/is, '')
+                .replace(/^reply:\s*/is, '')
+                .replace(/\\"/g, '"')
+                .trim();
 
-                aiResult = {
-                    status: parsed.status || "safe",
-                    reply: rawReply.trim()
-                };
-            } else {
-                throw new Error("No JSON found");
-            }
+            aiResult = { status: parsed.status || "safe", reply: finalReply };
         } catch (e) {
-            console.warn("AI JSON Parse Failed, using manual extraction");
-            
-            // Fallback: Sirf text nikalen jo quotes ke andar ho
             const replyMatch = responseText.match(/"reply":\s*"([\s\S]*?)"/);
-            if (replyMatch && replyMatch[1]) {
-                aiResult.reply = replyMatch[1].replace(/\\n/g, '\n').trim();
-            } else {
-                // Bilkul hi phat jaye toh plain text clean karke bhej do
-                aiResult.reply = responseText
-                    .replace(/\{[\s\S]*\}/g, '') // Remove any brackets
-                    .replace(/"status":\s*"safe"/g, '')
-                    .replace(/"reply":/g, '')
-                    .replace(/[\\"{}]/g, '')
-                    .trim();
+            aiResult.reply = replyMatch ? replyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim() : "";
+            aiResult.status = responseText.includes("flagged") ? "flagged" : "safe";
+        }
+
+        // 6. SENTENCE COMPLETION AUTO-REPAIR
+        const unfinishedWords = ['that', 'the', 'and', 'with', 'for', 'a', 'of', 'this', 'is', 'to'];
+        const wordsArr = aiResult.reply.split(' ');
+        const lastWord = wordsArr.pop()?.toLowerCase().replace(/[^a-z]/g, '');
+        
+        if (unfinishedWords.includes(lastWord) || !/[.!?]$/.test(aiResult.reply)) {
+            const lastPoint = aiResult.reply.lastIndexOf('.');
+            if (lastPoint > 15) {
+                aiResult.reply = aiResult.reply.substring(0, lastPoint + 1);
             }
         }
 
-        // 8. FINAL CLEANUP (Double check no junk remains)
-        if (aiResult.reply.includes('"status":')) {
-             // Agar ab bhi junk hai, toh last attempt to get the text after the last colon
-             const parts = aiResult.reply.split(/["']: /);
-             aiResult.reply = parts[parts.length - 1].replace(/[\\"{}]/g, '').trim();
-        }
-
-
+        // 7. NOTIFICATION TRIGGER
         if (aiResult.status === 'flagged') {
             await Notification.create({
                 user: user._id,
                 type: 'crisis_alert',
-                message: `Risky comment from ${authorName}`,
-                commentId: commentId
+                message: `Review Needed: Critique from @${authorName}`,
+                commentId
             });
         }
 
+        // 8. FINAL RESPONSE
         res.json({
             success: true,
-            status: aiResult.status || "safe",
+            status: aiResult.status,
             reply: aiResult.reply,
             usage: { used: user.repliesUsed, limit: limit }
         });
 
     } catch (err) {
-        console.error("AI Error:", err);
-        res.status(500).json({ message: "Failed to generate AI reply" });
+        console.error("Gemini Error:", err);
+        res.status(500).json({ message: "AI Engine is syncing. Please try again." });
     }
 });
 
