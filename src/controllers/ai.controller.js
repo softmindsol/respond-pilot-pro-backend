@@ -5,21 +5,21 @@ import { PERSONAS } from '../config/personas.js';
 
 // --- 🔥 NEW: HOOK DIVERSITY STRATEGIES ---
 const HOOK_STRATEGIES = [
-    "Direct Answer: Jump into the solution/answer immediately.",
-    "Specific Acknowledgment: Mention a keyword the user used in the first 3 words.",
-    "The Counter-Point: Start with 'Actually,' or 'The interesting thing is,'",
-    "The Agreement: Start with 'Spot on.', 'Exactly.', or 'Couldn't agree more.'",
-    "The Deep Dive: Start with 'The reason behind that is...'",
-    "Community Shoutout: Use author name immediately: 'Hey @[authorName],'",
-    "Reactionary Emoji: Start with 1-2 punchy emojis, then the text.",
-    "Direct Reaction: Start with 'Facts.', 'Wild.', 'Huge.', or 'Legacy move.'",
-    "The Follow-up: Start by asking them a thought-provoking question back.",
-    "The Insight: 'I noticed the same thing when I was making the video...'",
-    "The Correction: 'Close! It's actually more about...'",
-    "The Hype: 'Let's go! Glad someone caught that detail.'",
-    "Minimalist: Start with no greeting, just the core message.",
-    "The Comparison: 'This reminds me of when...'",
-    "The Perspective: 'That's a unique way to look at it!'"
+    "Jump into the solution or answer immediately without any greeting.",
+    "Mention a specific keyword or noun the user used in your first 3 words.",
+    "Start with 'Actually,' or 'The interesting thing is,' to provide a counter-perspective.",
+    "Start with 'Spot on.', 'Exactly.', or 'Couldn't agree more.' to show agreement.",
+    "Explain the reason or 'why' behind the topic immediately.",
+    "Address the user directly by name: 'Hey @[authorName],'",
+    "Use 1-2 punchy emojis at the very beginning, then start the text.",
+    "Start with a strong reactionary word like 'Facts.', 'Wild.', 'Huge.', or 'Legacy move.'",
+    "Ask the user a thought-provoking follow-up question in the first sentence.",
+    "Share a personal observation about the making of the video.",
+    "Correct a detail politely by starting with 'Close! It's actually...'",
+    "Show excitement immediately: 'Let's go! Glad someone caught that.'",
+    "Keep the whole response under 15 words and start with the core point.",
+    "Start with 'Personally, I feel...' to give a creator's perspective.",
+    "Be action-oriented: Start with 'On it!' or 'Adding this to my notes!'"
 ];
 
 // Utils 
@@ -80,24 +80,25 @@ const generateReplyPrompt = ({
     ${toneContent ? `Additional Tone Instructions: ${toneContent}` : ""}
 
     **STRICT OPERATING PROCEDURES (US MARKET STANDARD):**
-   1. **CRITIQUE DETECTION (SMART DEFENSE):** 
+    1. **NO PREFIXES:** Do NOT include any labels, tactic names, or prefixes like "The Insight:", "Reply:", or "Status:".
+    2. **CRITIQUE DETECTION (SMART DEFENSE):** 
        - If @${authorName} is skeptical, doubts your strategy, or gives negative feedback about the video/content:
        - ACTION: Do NOT apologize. Do NOT be a bot. Write a logical, short, and firm defense of your position.
        - STATUS: You MUST set "status" to "flagged".
     
-    2. **COMPLETENESS RULE:**
+    3. **COMPLETENESS RULE:**
        - Every response must be 1 to 3 FULL sentences. 
        - End with a period (.), exclamation mark (!), or question mark (?). 
        - NEVER stop mid-sentence.
 
-    3. **BANNED PHRASES:**
+    4. **BANNED PHRASES:**
        - "Thank you for the comment", "Thanks for watching", "I appreciate your feedback".
 
-    4. **OPENING STRIKE:**
+    5. **OPENING STRIKE:**
        - Start your message using this strategy: [${hookStrategy}]
        - Jump straight to the point. No bot-filler.
 
-    5. **MULTILANGUAGE:** 
+    6. **MULTILANGUAGE:** 
        - Detect the comment language and reply in the EXACT SAME language.
 
     Video Context: "${videoTitle || 'Current Video'}"

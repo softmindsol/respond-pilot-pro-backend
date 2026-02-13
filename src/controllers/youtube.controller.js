@@ -95,24 +95,13 @@ const postReply = async (req, res) => {
 
 const getSyncedComments = async (req, res) => {
     try {
-        const { videoId, pageToken,refresh } = req.query;
+        const { videoId, pageToken, refresh } = req.query;
         if (!videoId) {
             return res.status(400).json({ message: 'Video ID is required.' });
         }
-
-        
-        // Ensure user has youtube tokens
-        if (!req?.user?.isConnectedToYoutube) {
-             return res.status(400).json({ message: 'User is not connected to YouTube.' });
-        }
-
-        
-        const userWithToken = await User.findById(req.user._id).select('+youtubeRefreshToken');
-        if (!userWithToken || !userWithToken.isConnectedToYoutube || !userWithToken.youtubeRefreshToken) {
-             return res.status(400).json({ message: 'User is not connected to YouTube or Token is missing.' });
-        }
-
-        const comments = await youtubeService.getSmartComments(userWithToken, videoId,pageToken,refresh);
+    
+        // Pass user object (service will handle fetching activeChannel & token)
+        const comments = await youtubeService.getSmartComments(req.user, videoId, pageToken, refresh);
         res.json(comments);
 
     } catch (error) {
@@ -124,17 +113,22 @@ const getSyncedComments = async (req, res) => {
 const disconnectChannel = async (req, res) => {
     try {
         const userId = req.user._id;
+        const user = await User.findById(userId);
 
-        // User ko update karein aur YouTube fields ko NULL/FALSE set karein
-        await User.findByIdAndUpdate(userId, {
-            isConnectedToYoutube: false,
-            youtubeChannelId: null,
-            youtubeChannelName: null,
-            youtubeRefreshToken: null,
-            lastVideoSync: null,
-            // Agar aap chaho to 'tone' ya 'notificationSettings' reset na karein
-            // taake user wapis aaye to settings wahi milen.
-        });
+        if (user.activeChannel) {
+            // Option 1: Just unlink
+            user.activeChannel = null;
+            
+            // Check if any other channels exist? 
+            // For now, if they disconnect the active one, we mark isConnectedToYoutube as false 
+            // until they switch to another one or reconnect.
+            // But ideally we should check if other channels exist.
+            // const channelCount = await Channel.countDocuments({ user: userId });
+            // if (channelCount === 0) user.isConnectedToYoutube = false;
+             user.isConnectedToYoutube = false; // Simple approach: Disconnect = Offline state
+
+            await user.save();
+        }
 
         res.json({ success: true, message: "Channel disconnected successfully." });
 
