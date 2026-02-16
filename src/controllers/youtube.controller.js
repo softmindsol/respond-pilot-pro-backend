@@ -1,5 +1,7 @@
 import User from '../models/user.model.js';
 import youtubeService from '../services/youtube.service.js';
+import ReplyQueue from '../models/queue.model.js';
+import Comment from '../models/comment.model.js';
 
 const getAuthUrl = (req, res) => {
     try {
@@ -137,6 +139,76 @@ const disconnectChannel = async (req, res) => {
         res.status(500).json({ message: "Failed to disconnect channel." });
     }
 };
+
+export const queueBulkReplies = async (req, res) => {
+    try {
+        const { replies } = req.body; // Array of { commentId, replyText }
+        const userId = req.user._id;
+        console.log("User:", req.user);
+        const channelId = req.user.activeChannel; // Correct field name
+console.log("Replies:", replies);
+console.log("User:", userId);
+console.log("Channel ID:", channelId);
+
+        if (!replies || replies.length === 0) return res.status(400).json({ message: "No replies provided" });
+
+        // 1. Prepare Queue Documents
+        const queueItems = replies.map(r => ({
+            userId,
+            channelId,
+            commentId: r.commentId,
+            replyText: r.replyText || r.commentText || r.reply,
+            status: 'pending'
+        }));
+
+        // 2. Insert into Queue
+        await ReplyQueue.insertMany(queueItems);
+
+        // 3. Mark these comments as "Replied" in our DB so they disappear from "Pending" feed
+        const commentIds = replies.map(r => r.commentId);
+        await Comment.updateMany(
+            { commentId: { $in: commentIds } },
+            { $set: { status: 'Replied' } } 
+        );
+
+        res.json({ 
+            success: true, 
+            message: `${replies.length} replies added to background queue. You can safely close the app.` 
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getQueueProgress = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // Aaj ke ya active jobs dhoondein
+        const pendingCount = await ReplyQueue.countDocuments({ userId, status: 'pending' });
+        const processingCount = await ReplyQueue.countDocuments({ userId, status: 'processing' });
+        const completedCount = await ReplyQueue.countDocuments({ userId, status: 'completed' });
+        const failedCount = await ReplyQueue.countDocuments({ userId, status: 'failed' });
+
+        const total = pendingCount + processingCount + completedCount + failedCount;
+
+        res.json({
+            totalInQueue: total,
+            pending: pendingCount + processingCount,
+            completed: completedCount,
+            failed: failedCount,
+            isDone: (pendingCount + processingCount) === 0 && total > 0
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
+
+
 export default {
     getAuthUrl,
     googleCallback,
@@ -144,5 +216,7 @@ export default {
     getVideos,
     postReply,
     getSyncedComments,
-    disconnectChannel
+    disconnectChannel,
+    getQueueProgress,
+    queueBulkReplies
 };

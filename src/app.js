@@ -5,6 +5,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import connectDB from './config/db.js';
 import routes from './routes/index.js';
+import { startReplyWorker } from './workers/replyWorker.js';
 
 dotenv.config();
 
@@ -77,5 +78,9 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    
+    // Yahan worker start karein. Server up hone ke baad.
+    console.log("🛠️ Initializing Background Worker...");
+    startReplyWorker(); 
 });

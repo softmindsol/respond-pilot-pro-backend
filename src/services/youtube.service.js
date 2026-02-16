@@ -3,7 +3,8 @@ import User from '../models/user.model.js';
 import Video from '../models/video.model.js';
 import Comment from '../models/comment.model.js';
 import Channel from '../models/channel.model.js';
-
+import dotenv from 'dotenv';
+dotenv.config();
 const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -25,6 +26,7 @@ const generateAuthUrl = (userId) => {
         state: userId.toString() // Pass user ID to identify them on callback
     });
 };
+
 
 export const handleCallback = async (code, userId) => {
     // 1. Get Tokens from Google
