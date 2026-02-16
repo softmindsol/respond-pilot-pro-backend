@@ -643,11 +643,6 @@ export const postReplyToComment = async (userId, commentId, replyText) => {
     const channel = await Channel.findById(user.activeChannel).select('+youtubeRefreshToken');
     if (!channel || !channel.youtubeRefreshToken) throw new Error('Channel authorization missing.');
 
-    // CHECK LIMIT
-    if (user.repliesUsed >= user.repliesLimit) {
-        throw new Error('You have reached your reply limit. Please upgrade your plan.');
-    }
-
     // 2. Auth Credentials
     oauth2Client.setCredentials({ refresh_token: channel.youtubeRefreshToken });
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
@@ -664,17 +659,8 @@ export const postReplyToComment = async (userId, commentId, replyText) => {
             }
         });
 
-        // 4. Increment Count Correctly
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $inc: { repliesUsed: 1 } },
-            { new: true } 
-        );
-
         return {
-            ...response.data,
-            repliesUsed: updatedUser.repliesUsed,
-            repliesLimit: updatedUser.repliesLimit
+            ...response.data
         };
 
     } catch (error) {

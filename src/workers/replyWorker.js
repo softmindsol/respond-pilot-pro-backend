@@ -37,7 +37,8 @@ export const startReplyWorker = async () => {
                 await job.save();
                 
                 // User credits update
-                await User.findByIdAndUpdate(job.userId, { $inc: { repliesUsed: 1 } });
+                // await User.findByIdAndUpdate(job.userId, { $inc: { repliesUsed: 1 } });
+                // 🔥 NOTE: Upfront charging logic in controller handles this now.
                 
                 console.log(`✅ [Worker] Posted successfully. Waiting for next drip...`);
 

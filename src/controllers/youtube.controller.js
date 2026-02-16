@@ -79,15 +79,17 @@ const postReply = async (req, res) => {
 
         const data = await youtubeService.postReplyToComment(user._id, commentId, commentText);
 
-        // user.repliesUsed = (user.repliesUsed || 0) + 1;
-        // await user.save();
-        // 🔥 FIX: Service already increments the count. Don't double charge!
-        // const updatedUser = await User.findByIdAndUpdate(...) <- REMOVED
+        const updatedUser = await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { repliesUsed: 1 } },
+            { new: true }
+        );
+
         res.json({
             ...data,
             usage: {
                 // Frontend ko updated count bhejen taake UI foran update ho
-                repliesUsed: data.repliesUsed
+                repliesUsed: updatedUser.repliesUsed
             }
         });
     } catch (error) {
@@ -163,6 +165,9 @@ console.log("Channel ID:", channelId);
 
         // 2. Insert into Queue
         await ReplyQueue.insertMany(queueItems);
+
+        // 3. Increment Usage Count Based on Comments Count (Upfront Charge)
+        await User.findByIdAndUpdate(userId, { $inc: { repliesUsed: replies.length } });
 
         // 3. Mark these comments as "Replied" in our DB so they disappear from "Pending" feed
         const commentIds = replies.map(r => r.commentId);
