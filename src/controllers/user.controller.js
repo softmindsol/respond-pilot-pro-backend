@@ -1,5 +1,6 @@
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
+import Channel from "../models/channel.model.js";
 
 // User khud Affiliate banna chahta hai (Tier 2)
 export const joinAffiliateProgram = async (req, res) => {
@@ -142,4 +143,50 @@ export const markAllNotificationsRead = async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
+};
+
+
+export const switchActiveChannel = async (req, res) => {
+    try {
+        const { channelId } = req.body;
+        const userId = req.user._id;
+
+        // 🔥 FIX: 'userId' ki jagah 'user' likhein kyunke Model mein field ka naam 'user' hai
+        const channelExists = await Channel.findOne({ _id: channelId, user: userId });
+
+        if (!channelExists) {
+            console.log("❌ Filter failed. Check if this channel belongs to user:", userId);
+            return res.status(404).json({ 
+                message: "Channel not found or unauthorized." 
+            });
+        }
+
+        // 2. Sab ko inactive karein
+        await Channel.updateMany(
+            { user: userId }, // 🔥 Yahan bhi 'user' karein
+            { $set: { isActive: false } }
+        );
+
+        // 3. Selected ko active karein
+        channelExists.isActive = true;
+        await channelExists.save();
+
+        // 4. User model update
+        await User.findByIdAndUpdate(userId, { activeChannel: channelExists._id });
+
+        res.json({ 
+            success: true, 
+            message: `Switched to ${channelExists.youtubeChannelName}`
+        });
+
+    } catch (error) {
+        console.error("🔥 Switch Error:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
+// API for Header to list all channels
+export const getMyChannels = async (req, res) => {
+    const channels = await Channel.find({ user: req.user._id }).select('youtubeChannelName authorAvatar isActive');
+    res.json(channels);
 };

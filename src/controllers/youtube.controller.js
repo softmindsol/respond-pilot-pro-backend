@@ -1,5 +1,7 @@
 import User from '../models/user.model.js';
 import youtubeService from '../services/youtube.service.js';
+import ReplyQueue from '../models/queue.model.js';
+import Comment from '../models/comment.model.js';
 
 const getAuthUrl = (req, res) => {
     try {
@@ -77,15 +79,17 @@ const postReply = async (req, res) => {
 
         const data = await youtubeService.postReplyToComment(user._id, commentId, commentText);
 
-        // user.repliesUsed = (user.repliesUsed || 0) + 1;
-        // await user.save();
-        // 🔥 FIX: Service already increments the count. Don't double charge!
-        // const updatedUser = await User.findByIdAndUpdate(...) <- REMOVED
+        const updatedUser = await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { repliesUsed: 1 } },
+            { new: true }
+        );
+
         res.json({
             ...data,
             usage: {
                 // Frontend ko updated count bhejen taake UI foran update ho
-                repliesUsed: data.repliesUsed
+                repliesUsed: updatedUser.repliesUsed
             }
         });
     } catch (error) {
@@ -95,24 +99,13 @@ const postReply = async (req, res) => {
 
 const getSyncedComments = async (req, res) => {
     try {
-        const { videoId, pageToken,refresh } = req.query;
+        const { videoId, pageToken, refresh } = req.query;
         if (!videoId) {
             return res.status(400).json({ message: 'Video ID is required.' });
         }
-
-        
-        // Ensure user has youtube tokens
-        if (!req?.user?.isConnectedToYoutube) {
-             return res.status(400).json({ message: 'User is not connected to YouTube.' });
-        }
-
-        
-        const userWithToken = await User.findById(req.user._id).select('+youtubeRefreshToken');
-        if (!userWithToken || !userWithToken.isConnectedToYoutube || !userWithToken.youtubeRefreshToken) {
-             return res.status(400).json({ message: 'User is not connected to YouTube or Token is missing.' });
-        }
-
-        const comments = await youtubeService.getSmartComments(userWithToken, videoId,pageToken,refresh);
+    
+        // Pass user object (service will handle fetching activeChannel & token)
+        const comments = await youtubeService.getSmartComments(req.user, videoId, pageToken, refresh);
         res.json(comments);
 
     } catch (error) {
@@ -124,17 +117,22 @@ const getSyncedComments = async (req, res) => {
 const disconnectChannel = async (req, res) => {
     try {
         const userId = req.user._id;
+        const user = await User.findById(userId);
 
-        // User ko update karein aur YouTube fields ko NULL/FALSE set karein
-        await User.findByIdAndUpdate(userId, {
-            isConnectedToYoutube: false,
-            youtubeChannelId: null,
-            youtubeChannelName: null,
-            youtubeRefreshToken: null,
-            lastVideoSync: null,
-            // Agar aap chaho to 'tone' ya 'notificationSettings' reset na karein
-            // taake user wapis aaye to settings wahi milen.
-        });
+        if (user.activeChannel) {
+            // Option 1: Just unlink
+            user.activeChannel = null;
+            
+            // Check if any other channels exist? 
+            // For now, if they disconnect the active one, we mark isConnectedToYoutube as false 
+            // until they switch to another one or reconnect.
+            // But ideally we should check if other channels exist.
+            // const channelCount = await Channel.countDocuments({ user: userId });
+            // if (channelCount === 0) user.isConnectedToYoutube = false;
+             user.isConnectedToYoutube = false; // Simple approach: Disconnect = Offline state
+
+            await user.save();
+        }
 
         res.json({ success: true, message: "Channel disconnected successfully." });
 
@@ -143,6 +141,79 @@ const disconnectChannel = async (req, res) => {
         res.status(500).json({ message: "Failed to disconnect channel." });
     }
 };
+
+export const queueBulkReplies = async (req, res) => {
+    try {
+        const { replies } = req.body; // Array of { commentId, replyText }
+        const userId = req.user._id;
+        console.log("User:", req.user);
+        const channelId = req.user.activeChannel; // Correct field name
+console.log("Replies:", replies);
+console.log("User:", userId);
+console.log("Channel ID:", channelId);
+
+        if (!replies || replies.length === 0) return res.status(400).json({ message: "No replies provided" });
+
+        // 1. Prepare Queue Documents
+        const queueItems = replies.map(r => ({
+            userId,
+            channelId,
+            commentId: r.commentId,
+            replyText: r.replyText || r.commentText || r.reply,
+            status: 'pending'
+        }));
+
+        // 2. Insert into Queue
+        await ReplyQueue.insertMany(queueItems);
+
+        // 3. Increment Usage Count Based on Comments Count (Upfront Charge)
+        await User.findByIdAndUpdate(userId, { $inc: { repliesUsed: replies.length } });
+
+        // 3. Mark these comments as "Replied" in our DB so they disappear from "Pending" feed
+        const commentIds = replies.map(r => r.commentId);
+        await Comment.updateMany(
+            { commentId: { $in: commentIds } },
+            { $set: { status: 'Replied' } } 
+        );
+
+        res.json({ 
+            success: true, 
+            message: `${replies.length} replies added to background queue. You can safely close the app.` 
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getQueueProgress = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // Aaj ke ya active jobs dhoondein
+        const pendingCount = await ReplyQueue.countDocuments({ userId, status: 'pending' });
+        const processingCount = await ReplyQueue.countDocuments({ userId, status: 'processing' });
+        const completedCount = await ReplyQueue.countDocuments({ userId, status: 'completed' });
+        const failedCount = await ReplyQueue.countDocuments({ userId, status: 'failed' });
+
+        const total = pendingCount + processingCount + completedCount + failedCount;
+
+        res.json({
+            totalInQueue: total,
+            pending: pendingCount + processingCount,
+            completed: completedCount,
+            failed: failedCount,
+            isDone: (pendingCount + processingCount) === 0 && total > 0
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
+
+
 export default {
     getAuthUrl,
     googleCallback,
@@ -150,5 +221,7 @@ export default {
     getVideos,
     postReply,
     getSyncedComments,
-    disconnectChannel
+    disconnectChannel,
+    getQueueProgress,
+    queueBulkReplies
 };

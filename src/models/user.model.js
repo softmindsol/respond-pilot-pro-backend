@@ -3,6 +3,11 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 const userSchema = mongoose.Schema(
     {
+        activeChannel: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Channel',
+    default: null
+},
         name: {
             type: String,
             required: true,
@@ -21,7 +26,7 @@ const userSchema = mongoose.Schema(
             type: String,
             required: function () { return !this.isGoogleAuth; }, // Required if not Google Auth
         },
-        plan: {
+        plan: { 
             type: String,
             enum: ['Free', 'Basic', 'Pro', 'PRO_PLUS', 'Founding Partner'],
             default: 'Free'
@@ -37,18 +42,7 @@ const userSchema = mongoose.Schema(
         googleId: {
             type: String,
         },
-        youtubeChannelId: {
-            type: String,
-            default: null
-        },
-        youtubeChannelName: {
-            type: String,
-            default: null
-        },
-        youtubeRefreshToken: {
-            type: String,
-            select: false // Security: Ye default query me nahi aayega
-        },
+       
         isConnectedToYoutube: {
             type: Boolean,
             default: false
@@ -105,10 +99,7 @@ const userSchema = mongoose.Schema(
         planExpiresAt: {
             type: Date,
         },
-        lastVideoSync: {
-            type: Date,
-            default: null
-        },
+     
         affiliateTier: {
             type: String,
             enum: ['none', 'tier1', 'tier2'],

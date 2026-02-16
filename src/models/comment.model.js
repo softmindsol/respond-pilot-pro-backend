@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const commentSchema = new mongoose.Schema({
     commentId: { type: String, required: true, unique: true },
+    channel: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', required: true, index: true },
     videoId: { type: String, required: true, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     authorName: String,

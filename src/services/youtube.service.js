@@ -2,7 +2,9 @@ import { google } from 'googleapis';
 import User from '../models/user.model.js';
 import Video from '../models/video.model.js';
 import Comment from '../models/comment.model.js';
-
+import Channel from '../models/channel.model.js';
+import dotenv from 'dotenv';
+dotenv.config();
 const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -25,85 +27,275 @@ const generateAuthUrl = (userId) => {
     });
 };
 
-// channel Centeric
+
 export const handleCallback = async (code, userId) => {
+    // 1. Get Tokens from Google
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
+    // 2. Get YouTube Channel Details
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-    const channelRes = await youtube.channels.list({ part: 'snippet', mine: true });
+    const channelRes = await youtube.channels.list({ part: 'snippet,contentDetails', mine: true });
     
-    if (!channelRes.data.items) throw new Error('No channel found');
+    if (!channelRes.data.items || channelRes.data.items.length === 0) {
+        throw new Error('No YouTube channel found for this Google account.');
+    }
 
-    const channelId = channelRes.data.items[0].id;
-    const channelName = channelRes.data.items[0].snippet.title;
+    const ytChannelData = channelRes.data.items[0];
+    const channelId = ytChannelData.id;
 
-    // 1. Dhoondo ke kya ye Channel ID pehle se kisi ke paas hai?
-    const previousOwner = await User.findOne({ 
-        youtubeChannelId: channelId, 
-        _id: { $ne: userId } 
-    });
+    // 3. Mark all current user's other channels as inactive
+    await Channel.updateMany({ user: userId }, { $set: { isActive: false } });
 
+    // 4. Check if this Channel exists in our DB (Channel-Centric Check)
+    let channelRecord = await Channel.findOne({ youtubeChannelId: channelId });
     const currentUser = await User.findById(userId);
 
-    if (previousOwner) {
-        console.log(`🔄 Channel Centric Migration: Moving data from ${previousOwner.email} to ${currentUser.email}`);
-        
-        // A. Naye account ko purane account ka status de do
-        currentUser.plan = previousOwner.plan;
-        currentUser.repliesLimit = previousOwner.repliesLimit;
-        currentUser.repliesUsed = previousOwner.repliesUsed;
-        currentUser.affiliateTier = previousOwner.affiliateTier;
-        currentUser.notificationSettings = previousOwner.notificationSettings;
-        currentUser.tone = previousOwner.tone;
-        currentUser.customToneDescription = previousOwner.customToneDescription;
-        currentUser.advancedPersonaInstruction = previousOwner.advancedPersonaInstruction;
+    if (channelRecord) {
+        const previousOwnerId = channelRecord.user;
 
-        // B. 🔥 NEW: Stripe & Subscription Migration
-         currentUser.stripeCustomerId = previousOwner.stripeCustomerId;
-        currentUser.stripeSubscriptionId = previousOwner.stripeSubscriptionId;
-        currentUser.subscriptionStatus = previousOwner.subscriptionStatus;
-
-        // C. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
-        previousOwner.youtubeChannelId = null;
-        previousOwner.youtubeChannelName = null;
-        previousOwner.youtubeRefreshToken = null;
-        previousOwner.isConnectedToYoutube = false;
-        previousOwner.plan = 'Free';
-        previousOwner.repliesLimit = 0; // Kyunke is channel ka quota transfer ho chuka hai
-        previousOwner.repliesUsed = 0;
-
-        await previousOwner.save();
-        console.log(`✅ Previous owner ${previousOwner.email} has been unlinked and reset.`);
-
-    } else {
-        // --- 🛡️ STRATEGY: ANTI-ABUSE CHECK ---
-        // Agar ye channel pehle kabhi system mein aya hi nahi (First time ever)
-        // To hi isay 50 free credits milenge.
-        
-        if (!currentUser.isOnboarded) {
-            // Check if this channel ID ever existed in our records (even if unlinked now)
-            // (Note: Iske liye aap ek 'ChannelHistory' table bhi bana sakte hain, 
-            // lekin filhal User table se hi check karte hain)
+        // --- 🚀 SCENARIO: MIGRATION (Owner Change) ---
+        if (previousOwnerId.toString() !== userId.toString()) {
+            const previousOwner = await User.findById(previousOwnerId);
             
-            currentUser.repliesLimit = 50; // Pehli baar ane par 50 credits
+            console.log(`🔄 Surgical Migration: Moving ${channelId} from ${previousOwner?.email} to ${currentUser.email}`);
+
+            // A. Quota & Plan Migration
+            // User B (New) gets User A's (Old) plan and EXACT usage
+            if (currentUser.plan === 'Free') {
+                currentUser.plan = previousOwner?.plan || 'Free';
+                currentUser.repliesLimit = previousOwner?.repliesLimit || 50;
+                currentUser.repliesUsed = previousOwner?.repliesUsed || 0; // 🔥 Fix: 3/50 used migrate hoga
+                
+                // Stripe Migration
+                currentUser.stripeCustomerId = previousOwner?.stripeCustomerId;
+                currentUser.stripeSubscriptionId = previousOwner?.stripeSubscriptionId;
+                currentUser.subscriptionStatus = previousOwner?.subscriptionStatus;
+
+                // B. Reset Previous Owner (User A)
+                if (previousOwner) {
+                    previousOwner.plan = 'Free';
+                    previousOwner.repliesLimit = 0; // Usage limit zero kyunke ye migrat ho gayi
+                    previousOwner.repliesUsed = 0;
+                    previousOwner.stripeSubscriptionId = null;
+                    previousOwner.subscriptionStatus = 'inactive';
+                    
+                    // Agar ye User A ka active channel tha, to pointer saaf karo
+                    if (previousOwner.activeChannel?.toString() === channelRecord._id.toString()) {
+                        previousOwner.activeChannel = null;
+                    }
+                    await previousOwner.save();
+                }
+            }
+
+            // C. 🔥 DATA LEAK FIX: Re-assign all Videos and Comments to New Owner
+            // Taake User A ko dropdown mein purana data nazar na aaye
+            await Video.updateMany({ videoId: { $exists: true }, user: previousOwnerId }, { $set: { user: userId } });
+            await Comment.updateMany({ userId: previousOwnerId, videoId: { $exists: true } }, { $set: { userId: userId } });
+
+            // D. Transfer Channel Ownership
+            channelRecord.user = userId;
+            channelRecord.isActive = true;
+            if (tokens.refresh_token) channelRecord.youtubeRefreshToken = tokens.refresh_token;
+            await channelRecord.save();
+        } else {
+            // Already owned by same user, just update token and status
+            channelRecord.isActive = true;
+            if (tokens.refresh_token) channelRecord.youtubeRefreshToken = tokens.refresh_token;
+            await channelRecord.save();
+        }
+    } else {
+        // --- 🛡️ SCENARIO: BRAND NEW CHANNEL ---
+        channelRecord = await Channel.create({
+            user: userId,
+            youtubeChannelId: channelId,
+            youtubeChannelName: ytChannelData.snippet.title,
+            youtubeRefreshToken: tokens.refresh_token,
+            authorAvatar: ytChannelData.snippet.thumbnails.default.url,
+            isTrialClaimed: true,
+            isActive: true
+        });
+
+        // Naye user ko 50 credits do agar wo fresh hai
+        if (!currentUser.isOnboarded) {
+            currentUser.repliesLimit = 50;
         }
     }
 
-    // 2. Finalize Connection for Current User
-    currentUser.youtubeChannelId = channelId;
-    currentUser.youtubeChannelName = channelName;
+    // 5. Finalize Current User State
     currentUser.isConnectedToYoutube = true;
-    currentUser.isOnboarded = true; // 🔥 User is now fully onboarded
-    
-    if (tokens.refresh_token) {
-        currentUser.youtubeRefreshToken = tokens.refresh_token;
-    }
-
+    currentUser.isOnboarded = true;
+    currentUser.activeChannel = channelRecord._id; 
     await currentUser.save();
 
-    return { channelName };
+    return { 
+        channelName: ytChannelData.snippet.title,
+        activeChannelId: channelRecord._id 
+    };
 };
+// export const handleCallback = async (code, userId) => {
+//     const { tokens } = await oauth2Client.getToken(code);
+//     oauth2Client.setCredentials(tokens);
+
+//     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+//     const channelRes = await youtube.channels.list({ part: 'snippet', mine: true });
+    
+//     const ytChannelData = channelRes.data.items[0];
+//     const channelId = ytChannelData.id;
+
+//     await Channel.updateMany({ userId: userId }, { $set: { isActive: false } });
+
+//     // 1. Check: Does this Channel already exist?
+//     let channelRecord = await Channel.findOne({ youtubeChannelId: channelId });
+//     const currentUser = await User.findById(userId);
+
+//     if (channelRecord) {
+//         const previousOwnerId = channelRecord.user; // Note: Schema uses 'user', not 'userId'
+
+//         // --- 🚀 SCENARIO: MIGRATION (Channel moves from User A to User B) ---
+//         if (previousOwnerId.toString() !== userId.toString()) {
+//             const previousOwner = await User.findById(previousOwnerId);
+            
+//             console.log(`🔄 Moving Channel ${channelId} from ${previousOwner?.email} to ${currentUser.email}`);
+
+//             // A. Migrate Plan if new user is Free and old was Paid
+//             if (currentUser.plan === 'Free' && previousOwner?.plan !== 'Free') {
+//                 currentUser.plan = previousOwner.plan;
+//                 currentUser.repliesLimit = previousOwner.repliesLimit;
+//                 currentUser.repliesUsed = previousOwner.repliesUsed;
+//                 currentUser.stripeCustomerId = previousOwner.stripeCustomerId;
+//                 currentUser.stripeSubscriptionId = previousOwner.stripeSubscriptionId;
+//                 currentUser.subscriptionStatus = previousOwner.subscriptionStatus;
+
+//                 // Reset Old User
+//                 previousOwner.plan = 'Free';
+//                 previousOwner.repliesLimit = 0;
+//                 previousOwner.stripeSubscriptionId = null;
+//                 previousOwner.subscriptionStatus = 'inactive';
+//                 // Remove active channel reference if it was this one
+//                 if (previousOwner.activeChannel?.toString() === channelRecord._id.toString()) {
+//                     previousOwner.activeChannel = null;
+//                 }
+//                 await previousOwner.save();
+//             }
+
+//             // B. Transfer Ownership
+//             channelRecord.user = userId; // Update owner
+//             if (tokens.refresh_token) channelRecord.youtubeRefreshToken = tokens.refresh_token;
+//             await channelRecord.save();
+//         } else {
+//             // Check if token needs update even if same owner
+//             if (tokens.refresh_token) {
+//                 channelRecord.youtubeRefreshToken = tokens.refresh_token;
+//                 await channelRecord.save();
+//             }
+//         }
+//     } else {
+//         // --- 🛡️ SCENARIO: BRAND NEW CHANNEL ---
+//         channelRecord = await Channel.create({
+//             user: userId,
+//             youtubeChannelId: channelId,
+//             youtubeChannelName: ytChannelData.snippet.title,
+//             youtubeRefreshToken: tokens.refresh_token,
+//             authorAvatar: ytChannelData.snippet.thumbnails.default.url,
+//             isTrialClaimed: true, // Renamed from isTrialUsed based on schema read
+//             isActive: true
+//         });
+
+//         // 50 Free Credits for new users
+//         if (!currentUser.isOnboarded) {
+//             currentUser.repliesLimit = 50;
+//         }
+//     }
+
+//     // 2. Finalize User State
+//     currentUser.isConnectedToYoutube = true;
+//     currentUser.isOnboarded = true;
+//     currentUser.activeChannel = channelRecord._id; // 🔥 FIX: Save MongoDB ObjectId
+//     await currentUser.save();
+
+//     return { channelName: ytChannelData.snippet.title };
+// };
+
+// channel Centeric
+// export const handleCallback = async (code, userId) => {
+//     const { tokens } = await oauth2Client.getToken(code);
+//     oauth2Client.setCredentials(tokens);
+
+//     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+//     const channelRes = await youtube.channels.list({ part: 'snippet', mine: true });
+    
+//     if (!channelRes.data.items) throw new Error('No channel found');
+
+//     const channelId = channelRes.data.items[0].id;
+//     const channelName = channelRes.data.items[0].snippet.title;
+
+//     // 1. Dhoondo ke kya ye Channel ID pehle se kisi ke paas hai?
+//     const previousOwner = await User.findOne({ 
+//         youtubeChannelId: channelId, 
+//         _id: { $ne: userId } 
+//     });
+
+//     const currentUser = await User.findById(userId);
+
+//     if (previousOwner) {
+//         console.log(`🔄 Channel Centric Migration: Moving data from ${previousOwner.email} to ${currentUser.email}`);
+        
+//         // A. Naye account ko purane account ka status de do
+//         currentUser.plan = previousOwner.plan;
+//         currentUser.repliesLimit = previousOwner.repliesLimit;
+//         currentUser.repliesUsed = previousOwner.repliesUsed;
+//         currentUser.affiliateTier = previousOwner.affiliateTier;
+//         currentUser.notificationSettings = previousOwner.notificationSettings;
+//         currentUser.tone = previousOwner.tone;
+//         currentUser.customToneDescription = previousOwner.customToneDescription;
+//         currentUser.advancedPersonaInstruction = previousOwner.advancedPersonaInstruction;
+
+//         // B. 🔥 NEW: Stripe & Subscription Migration
+//          currentUser.stripeCustomerId = previousOwner.stripeCustomerId;
+//         currentUser.stripeSubscriptionId = previousOwner.stripeSubscriptionId;
+//         currentUser.subscriptionStatus = previousOwner.subscriptionStatus;
+
+//         // C. Purane account ko "Nanga" (Reset) kar do taake wo abuse na ho sake
+//         previousOwner.youtubeChannelId = null;
+//         previousOwner.youtubeChannelName = null;
+//         previousOwner.youtubeRefreshToken = null;
+//         previousOwner.isConnectedToYoutube = false;
+//         previousOwner.plan = 'Free';
+//         previousOwner.repliesLimit = 0; // Kyunke is channel ka quota transfer ho chuka hai
+//         previousOwner.repliesUsed = 0;
+
+//         await previousOwner.save();
+//         console.log(`✅ Previous owner ${previousOwner.email} has been unlinked and reset.`);
+
+//     } else {
+//         // --- 🛡️ STRATEGY: ANTI-ABUSE CHECK ---
+//         // Agar ye channel pehle kabhi system mein aya hi nahi (First time ever)
+//         // To hi isay 50 free credits milenge.
+        
+//         if (!currentUser.isOnboarded) {
+//             // Check if this channel ID ever existed in our records (even if unlinked now)
+//             // (Note: Iske liye aap ek 'ChannelHistory' table bhi bana sakte hain, 
+//             // lekin filhal User table se hi check karte hain)
+            
+//             currentUser.repliesLimit = 50; // Pehli baar ane par 50 credits
+//         }
+//     }
+
+//     // 2. Finalize Connection for Current User
+//     currentUser.youtubeChannelId = channelId;
+//     currentUser.youtubeChannelName = channelName;
+//     currentUser.isConnectedToYoutube = true;
+//     currentUser.isOnboarded = true; // 🔥 User is now fully onboarded
+    
+//     if (tokens.refresh_token) {
+//         currentUser.youtubeRefreshToken = tokens.refresh_token;
+//     }
+
+//     await currentUser.save();
+
+//     return { channelName };
+// };
 
 // email-centric
 // const handleCallback = async (code, userId) => {
@@ -141,60 +333,54 @@ export const handleCallback = async (code, userId) => {
 // };
 
 const getChannelComments = async (userId, pageToken = '', videoId = null) => {
-    // 1. User fetch karein
-    const user = await User.findById(userId).select('+youtubeRefreshToken');
+    // 1. User & Active Channel Fetch
+    const user = await User.findById(userId);
+    if (!user || !user.activeChannel) throw new Error('No active channel found. Please select a channel.');
 
-    if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
-        throw new Error('User is not connected to YouTube or Token is missing.');
-    }
+    const channel = await Channel.findById(user.activeChannel).select('+youtubeRefreshToken');
+    if (!channel || !channel.youtubeRefreshToken) throw new Error('Active channel not connected to YouTube.');
 
-    // 2. Credentials set karein
-    oauth2Client.setCredentials({
-        refresh_token: user.youtubeRefreshToken
-    });
-
+    // 2. Credentials
+    oauth2Client.setCredentials({ refresh_token: channel.youtubeRefreshToken });
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
     try {
-        // 3. Request Parameters banayein
+        // 3. Request Parameters
         const requestParams = {
             part: 'snippet,replies',
             maxResults: 30,
             pageToken: pageToken || undefined,
-            order: 'time', // Latest comments pehle
-            textFormat: 'plainText' // HTML tags hata kar simple text layega
+            order: 'time', 
+            textFormat: 'plainText' 
         };
 
-        // LOGIC: Agar videoId di hai to uske comments, warna pure channel ke videos ke comments
         if (videoId) {
             requestParams.videoId = videoId;
         } else {
-            requestParams.allThreadsRelatedToChannelId = user.youtubeChannelId;
+            requestParams.allThreadsRelatedToChannelId = channel.youtubeChannelId;
         }
 
         // 4. API Call
         const response = await youtube.commentThreads.list(requestParams);
 
-        // 5. Data Clean Karna
+        // 5. Data Cleaning
         const allComments = response.data.items.map(item => {
             const topComment = item.snippet.topLevelComment.snippet;
-            // 🔥 CHANGE 2: Replies Extract karna
             let replies = [];
             if (item.replies && item.replies.comments) {
-                // Replies ko sort karein (Oldest first achay lagte hain thread mein)
                 replies = item.replies.comments.map(reply => ({
                     id: reply.id,
                     author: reply.snippet.authorDisplayName,
                     authorImage: reply.snippet.authorProfileImageUrl,
                     text: reply.snippet.textDisplay,
                     publishedAt: reply.snippet.publishedAt,
-                    isOwner: reply.snippet.authorChannelId.value === user.youtubeChannelId // Check agar ye apka reply hai
-                })).reverse(); // Reverse taake purane pehle dikhen
+                    isOwner: reply.snippet.authorChannelId.value === channel.youtubeChannelId
+                })).reverse();
             }
 
             return {
-                id: item.id, // Comment ID (Reply karne ke liye ye chahiye hoga)
-                video_id: topComment.videoId, // Kis video par comment aya
+                id: item.id,
+                video_id: topComment.videoId,
                 author: topComment.authorDisplayName,
                 authorImage: topComment.authorProfileImageUrl,
                 text: topComment.textDisplay,
@@ -202,25 +388,20 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
                 likeCount: topComment.likeCount,
                 replyCount: item.snippet.totalReplyCount,
                 canReply: item.snippet.canReply,
-                // videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}` // Direct link to comment
                 videoLink: `https://www.youtube.com/watch?v=${topComment.videoId}&lc=${item.id}`,
                 replies: replies
-
             };
-
-
         });
-        // 🔥 SEPARATE LISTS
+
         const pendingComments = allComments.filter(c => c.status === "Pending");
         const repliedComments = allComments.filter(c => c.status === "Replied");
 
         return {
-            allComments,      // For Bottom Feed (Sab dikhana hai)
-            pendingComments,  // For Action Center (Sirf pending dikhana hai)
-            repliedComments ,
+            allComments, 
+            pendingComments,
+            repliedComments,
             nextPageToken: response.data.nextPageToken,
             pageInfo: response.data.pageInfo
-
         };
 
     } catch (error) {
@@ -350,34 +531,42 @@ const getChannelComments = async (userId, pageToken = '', videoId = null) => {
 // };
 
 export const getChannelVideos = async (userId, pageToken = '', forceRefresh = false, page = 1, limit = 50) => {
-    const user = await User.findById(userId).select('+youtubeRefreshToken');
-    
-    // 1. CACHE CHECK (Normal Load)
-    if (!forceRefresh && !pageToken && user.lastVideoSync) {
-        const timeDiff = new Date() - new Date(user.lastVideoSync);
+    // 1. Resolve Channel
+    const user = await User.findById(userId);
+    if (!user || !user.activeChannel) throw new Error('No active channel set.');
+
+    const channel = await Channel.findById(user.activeChannel).select('+youtubeRefreshToken');
+    if (!channel || !channel.youtubeRefreshToken) throw new Error('Channel token missing.');
+
+    // 2. CACHE CHECK (Using Channel ID)
+    if (!forceRefresh && !pageToken && channel.lastVideoSync) {
+        const timeDiff = new Date() - new Date(channel.lastVideoSync);
         if (timeDiff < 24 * 60 * 60 * 1000) {
             const skip = (page - 1) * limit;
-            const cachedVideos = await Video.find({ user: userId }).sort({ publishedAt: -1 }).skip(skip).limit(limit);
+            const cachedVideos = await Video.find({ channel: channel._id })
+                .sort({ publishedAt: -1 })
+                .skip(skip)
+                .limit(limit);
             if (cachedVideos.length > 0) return { videos: cachedVideos, source: 'cache' };
         }
     }
 
-    // 2. YOUTUBE API SETUP
-    oauth2Client.setCredentials({ refresh_token: user.youtubeRefreshToken });
+    // 3. YOUTUBE API SETUP
+    oauth2Client.setCredentials({ refresh_token: channel.youtubeRefreshToken });
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
     try {
-        const channelRes = await youtube.channels.list({ part: 'contentDetails', mine: true });
+        const channelRes = await youtube.channels.list({ part: 'contentDetails', id: channel.youtubeChannelId });
         const uploadsPlaylistId = channelRes.data.items[0].contentDetails.relatedPlaylists.uploads;
 
         let allFetchedVideos = [];
         let currentToken = pageToken || '';
         
-        // 🔥 FULL SYNC LOGIC: Agar Refresh dabaya hai toh loop chala kar sab le aao
+        // 🔥 FULL SYNC LOGIC
         if (forceRefresh) {
-            console.log("🔄 Starting Full Channel Sync...");
+            console.log(`🔄 Starting Full Sync for Channel: ${channel.youtubeChannelName}`);
             let hasNextPage = true;
-            let safetyCounter = 0; // Taake quota bilkul hi khatam na ho jaye (Max 10 calls = 500 videos)
+            let safetyCounter = 0; 
 
             while (hasNextPage && safetyCounter < 10) {
                 const res = await youtube.playlistItems.list({
@@ -393,7 +582,6 @@ export const getChannelVideos = async (userId, pageToken = '', forceRefresh = fa
                 safetyCounter++;
             }
         } else {
-            // Normal batch fetch (50 items)
             const res = await youtube.playlistItems.list({
                 part: 'snippet,status',
                 playlistId: uploadsPlaylistId,
@@ -407,21 +595,21 @@ export const getChannelVideos = async (userId, pageToken = '', forceRefresh = fa
         const validItems = allFetchedVideos.filter(item => item.status.privacyStatus !== 'private');
         const fetchedVideoIds = validItems.map(item => item.snippet.resourceId.videoId);
 
-        // 🔥 1. SURGICAL PRUNING: Sirf is user ki deleted videos urao
+        // 🔥 4. CLEANUP: Only delete videos for THIS channel that are no longer on YouTube
         if (forceRefresh) {
             await Video.deleteMany({
-                user: userId,
-                videoId: { $nin: fetchedVideoIds } // Jo YT list me nahi hain, unhe DB se delete krdo
+                channel: channel._id,
+                videoId: { $nin: fetchedVideoIds }
             });
-            console.log(`🗑️ Full Pruning complete for user: ${userId}`);
         }
 
-        // 🔥 2. BULK UPSERT
+        // 🔥 5. UPSERT with Channel Reference
         const ops = validItems.map(item => ({
             updateOne: {
-                filter: { videoId: item.snippet.resourceId.videoId, user: userId },
+                filter: { videoId: item.snippet.resourceId.videoId, channel: channel._id },
                 update: {
                     user: userId,
+                    channel: channel._id,
                     videoId: item.snippet.resourceId.videoId,
                     title: item.snippet.title,
                     thumbnail: item.snippet.thumbnails?.medium?.url,
@@ -433,12 +621,12 @@ export const getChannelVideos = async (userId, pageToken = '', forceRefresh = fa
 
         if (ops.length > 0) {
             await Video.bulkWrite(ops);
-            user.lastVideoSync = new Date();
-            await user.save();
+            channel.lastVideoSync = new Date(); // Update Channel Sync Time
+            await channel.save();
         }
 
-        // 3. RETURN DATA
-        const freshVideos = await Video.find({ user: userId }).sort({ publishedAt: -1 }).limit(limit);
+        // 6. RETURN DATA
+        const freshVideos = await Video.find({ channel: channel._id }).sort({ publishedAt: -1 }).limit(limit);
         return { videos: freshVideos, nextPageToken: currentToken, source: 'api' };
 
     } catch (error) {
@@ -447,53 +635,32 @@ export const getChannelVideos = async (userId, pageToken = '', forceRefresh = fa
     }
 };
 
-const postReplyToComment = async (userId, commentId, replyText) => {
-    // 1. User aur Token lein
-    const user = await User.findById(userId).select('+youtubeRefreshToken');
+export const postReplyToComment = async (userId, commentId, replyText) => {
+    // 1. User & Channel Fetch
+    const user = await User.findById(userId);
+    if (!user || !user.activeChannel) throw new Error('No active channel selected.');
 
-    if (!user || !user.isConnectedToYoutube || !user.youtubeRefreshToken) {
-        throw new Error('User is not connected to YouTube.');
-    }
+    const channel = await Channel.findById(user.activeChannel).select('+youtubeRefreshToken');
+    if (!channel || !channel.youtubeRefreshToken) throw new Error('Channel authorization missing.');
 
-    // CHECK LIMIT
-    if (user.repliesUsed >= user.repliesLimit) {
-        throw new Error('You have reached your reply limit. Please upgrade your plan.');
-    }
-
-    // 2. Auth Credentials set karein
-    oauth2Client.setCredentials({
-        refresh_token: user.youtubeRefreshToken
-    });
-
+    // 2. Auth Credentials
+    oauth2Client.setCredentials({ refresh_token: channel.youtubeRefreshToken });
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
     try {
         // 3. YouTube API: Comments.insert Call
-        // Ye specific structure chahiye hota hai YouTube ko
         const response = await youtube.comments.insert({
             part: 'snippet',
             requestBody: {
                 snippet: {
-                    parentId: commentId, // Kis comment ka reply hai
-                    textOriginal: replyText // Kya reply karna hai
+                    parentId: commentId, 
+                    textOriginal: replyText 
                 }
             }
         });
 
-        // 4. Increment Count Correctly (Atomic Update for Concurrency)
-        // Pehle hum `user.repliesUsed += 1; await user.save();` kar rahe thay.
-        // Jab multiple API calls ek sath aati hain (parallel), to purana method race condition cause karta hai.
-        // Isliye hum atomic `$inc` use karenge jo direct DB level par update karega.
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $inc: { repliesUsed: 1 } },
-            { new: true } // Return updated document
-        );
-
         return {
-            ...response.data,
-            repliesUsed: updatedUser.repliesUsed, // Frontend ko update bhejne ke liye
-            repliesLimit: updatedUser.repliesLimit
+            ...response.data
         };
 
     } catch (error) {
@@ -594,28 +761,29 @@ const postReplyToComment = async (userId, commentId, replyText) => {
 
 
 export const getSmartComments = async (user, videoId, pageToken = '', refresh  ) => {
-    // 1. Fetch user with Refresh Token
-    const fullUser = await User.findById(user._id).select('+youtubeRefreshToken');
-
-    if (!fullUser || !fullUser.youtubeRefreshToken) {
-        throw new Error('YouTube account not linked properly. Please reconnect.');
+    // 1. Fetch User & Active Channel
+    const fullUser = await User.findById(user._id);
+    if (!fullUser || !fullUser.activeChannel) throw new Error('No active channel found.');
+    const videoOwner = await Video.findOne({ videoId: videoId, user: user._id });
+if (!videoOwner) {
+        // Agar video is user ki nahi hai, toh khali data bhejain
+        return { comments: [], nextPageToken: null };
     }
+    const channel = await Channel.findById(fullUser.activeChannel).select('+youtubeRefreshToken');
+    if (!channel || !channel.youtubeRefreshToken) throw new Error('Channel token missing.');
 
-    // 2. Check current DB state
-    const dbCount = await Comment.countDocuments({ videoId, userId: fullUser._id });
+    // 2. Check current DB state (Filter by Video AND Channel)
+    const dbCount = await Comment.countDocuments({ videoId, channel: channel._id });
 
-    // YouTube API Trigger Conditions:
-    // - DB khali hai (First time)
-    // - User "Load More" kar raha hai (pageToken mojood hai)
-    // - User ne manually "Refresh" dabaya hai
+    // Trigger API if: DB empty, Pagination requested, or Manual Refresh
     const shouldFetchFromYouTube = dbCount === 0 || pageToken || refresh;
     
     let ytNextPageToken = null;
 
     if (shouldFetchFromYouTube) {
-        console.log(`🌐 Fetching from YouTube. Reason: ${pageToken ? 'Pagination' : refresh ? 'Manual Refresh' : 'Initial Sync'}`);
+        console.log(`🌐 Fetching from YouTube [${channel.youtubeChannelName}]. Reason: ${pageToken ? 'Pagination' : refresh ? 'Manual Refresh' : 'Initial Sync'}`);
         
-        oauth2Client.setCredentials({ refresh_token: fullUser.youtubeRefreshToken });
+        oauth2Client.setCredentials({ refresh_token: channel.youtubeRefreshToken });
         const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
         
         try {
@@ -630,6 +798,7 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
 
             const ytComments = ytResponse.data.items || [];
             ytNextPageToken = ytResponse.data.nextPageToken;
+
             // 3. Bulk Upsert Logic
             if (ytComments.length > 0) {
                 const ops = ytComments.map(item => {
@@ -640,7 +809,7 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
 
                     if (item.replies && item.replies.comments) {
                         currentCommentReplies = item.replies.comments.map(r => {
-                            const isOwner = r.snippet.authorChannelId.value === fullUser.youtubeChannelId;
+                            const isOwner = r.snippet.authorChannelId.value === channel.youtubeChannelId;
                             if (isOwner) ownerRepliedInThisThread = true;
 
                             return {
@@ -658,8 +827,9 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
                         updateOne: {
                             filter: { commentId: item.id },
                             update: {
-                                $set: { // 🔥 Use $set to only update YouTube data, preserving AI drafts
+                                $set: { 
                                     userId: fullUser._id,
+                                    channel: channel._id, // 🔥 Link to Channel
                                     videoId,
                                     authorName: topComment.authorDisplayName,
                                     authorAvatar: topComment.authorProfileImageUrl,
@@ -676,11 +846,12 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
                 });
                 await Comment.bulkWrite(ops);
 
-                // 4. 🔥 Update Video Meta: Store the token for this specific video
+                // 4. 🔥 Update Video Meta: Store the token for this specific video & Channel
+                // (Using findOneAndUpdate to ensure we match the right channel's video record, though VideoId is unique)
                 await Video.findOneAndUpdate(
-                    { videoId, user: fullUser._id }, 
+                    { videoId, channel: channel._id }, 
                     { nextPageToken: ytNextPageToken },
-                    { upsert: true }
+                    { upsert: false } // Video should ideally exist from getVideos, but if not, logic implies it must exist to have ID
                 );
             }
         } catch (apiError) {
@@ -693,16 +864,16 @@ export const getSmartComments = async (user, videoId, pageToken = '', refresh  )
         }
     } else {
         console.log("⚡ Serving from DB Cache");
-        // 🔥 Get stored token from Video model so "Load More" still works in cache mode
-        const videoMeta = await Video.findOne({ videoId, user: fullUser._id });
+        // 🔥 Get stored token from Video model
+        const videoMeta = await Video.findOne({ videoId, channel: channel._id });
         ytNextPageToken = videoMeta?.nextPageToken;
     }
 
     // 5. FINAL QUERY: Fetch from DB
     // Sort logic: 1. Pending First (alphabetical P before R), 2. Newest Published First
-    const comments = await Comment.find({ videoId, userId: fullUser._id })
+    const comments = await Comment.find({ videoId, channel: channel._id })
         .sort({ status: 1, publishedAt: -1 }) 
-        .limit(pageToken ? 500 : 50); // Large limit during pagination to show whole thread
+        .limit(pageToken ? 500 : 50); 
 
     return {
         comments,
