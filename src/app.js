@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import connectDB from './config/db.js';
 import routes from './routes/index.js';
 import { startReplyWorker } from './workers/replyWorker.js';
+import { startNotificationCron } from './workers/notificationWorker.js';
 
 dotenv.config();
 
@@ -83,4 +84,6 @@ app.listen(PORT, () => {
     // Yahan worker start karein. Server up hone ke baad.
     console.log("🛠️ Initializing Background Worker...");
     startReplyWorker(); 
+    startNotificationCron(); // 🔥 Naya Notification engine
+
 });
