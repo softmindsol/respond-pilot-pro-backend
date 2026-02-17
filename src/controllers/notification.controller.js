@@ -10,7 +10,6 @@ export const subscribeUser = async (req, res) => {
         }
 
         // 🔥 UPSERT LOGIC: 
-        // Agar ye device pehle se saved hai toh update karo, warna naya banao.
         await PushSubscription.findOneAndUpdate(
             { 'subscription.endpoint': subscription.endpoint },
             { 
