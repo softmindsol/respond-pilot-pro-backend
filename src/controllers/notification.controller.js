@@ -28,3 +28,18 @@ export const subscribeUser = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const unsubscribeUser = async (req, res) => {
+    try {
+        const { endpoint } = req.body; // Browser ka unique URL
+
+        if (!endpoint) return res.status(400).json({ message: "Endpoint required" });
+
+        // Sirf is specific device ko remove karein
+        await PushSubscription.deleteOne({ 'subscription.endpoint': endpoint });
+
+        res.json({ success: true, message: "Unsubscribed successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
