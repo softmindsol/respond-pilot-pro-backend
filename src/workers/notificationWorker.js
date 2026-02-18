@@ -6,13 +6,13 @@ import { sendPushNotification } from '../utils/pushNotifier.js';
 
 export const startNotificationCron = () => {
     // 🔥 Cron Rule: Har 60 minute baad (0 * * * *)
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('0 * * * *', async () => {
         console.log("🕵️ Checking for new comments (Hourly Sync)...");
 
         try {
             // 1. Un users ko dhoondein jinhone channel connect kiya hua hai
             const users = await User.find({ isConnectedToYoutube: true });
-
+ 
             for (const user of users) {
                 // 2. Har user ki sabse LATEST video dhoondein
                 const latestVideo = await Video.findOne({ user: user._id })

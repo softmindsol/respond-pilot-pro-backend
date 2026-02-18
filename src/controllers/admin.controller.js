@@ -137,10 +137,14 @@ export const processPayout = async (req, res) => {
 
 export const getTransactions = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 10, status } = req.query;
         const skip = (page - 1) * limit;
 
         let query = {};
+
+        if (status && status !== 'All') {
+            query.status = status.toLowerCase();
+        }
 
         // Fetch Data with User Details
         const transactions = await Transaction.find(query)
