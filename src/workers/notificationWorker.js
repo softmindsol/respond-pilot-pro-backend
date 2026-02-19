@@ -6,7 +6,7 @@ import { sendPushNotification } from '../utils/pushNotifier.js';
 
 export const startNotificationCron = () => {
     // 🔥 Cron Rule: Har 60 minute baad (0 * * * *)
-    cron.schedule('0 * * * *', async () => {
+    cron.schedule('*/2 * * * *', async () => {
         console.log("🕵️ Checking for new comments (Hourly Sync)...");
 
         try {
