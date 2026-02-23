@@ -136,6 +136,12 @@ notificationSettings: {
             type: Boolean,
             default: false 
         },
+    pauseNotifications: { type: Boolean, default: false }, 
+    threshold: { 
+        type: Number, 
+        enum: [20, 50, 100, 500], 
+        default: 20 
+    }
   
     },
     {

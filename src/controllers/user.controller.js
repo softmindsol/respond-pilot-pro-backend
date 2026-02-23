@@ -37,25 +37,21 @@ export const joinAffiliateProgram = async (req, res) => {
 
 export const updateSettings = async (req, res) => {
     try {
-        const { aiCrisisDetection } = req.body; // Boolean
+        const { aiCrisisDetection, threshold, pauseNotifications } = req.body; 
         const user = await User.findById(req.user._id);
 
-        // Security Check: Kya user qualify karta hai?
-        // (Sirf Pro Plus aur Tier 1 allow hain)
-        // Security Check: Kya user qualify karta hai?
-        // (Sirf Pro Plus aur Tier 1 allow hain)
-        // const isEligible = user.plan === 'Pro Plus' || 
-        //                    user.plan === 'PRO_PLUS' || 
-        //                    user.affiliateTier === 'tier1';
+        if (aiCrisisDetection !== undefined) user.notificationSettings.aiCrisisDetection = aiCrisisDetection;
+        if (threshold !== undefined) user.threshold = threshold;
+        if (pauseNotifications !== undefined) user.pauseNotifications = pauseNotifications;
 
-        // if (!isEligible) {
-        //     return res.status(403).json({ message: "This feature requires Pro Plus plan." });
-        // }
-
-        user.notificationSettings.aiCrisisDetection = aiCrisisDetection;
         await user.save();
 
-        res.json({ success: true, settings: user.notificationSettings });
+        res.json({ 
+            success: true, 
+            settings: user.notificationSettings,
+            threshold: user.threshold,
+            pauseNotifications: user.pauseNotifications
+        });
 
     } catch (error) {
         res.status(500).json({ message: error.message });

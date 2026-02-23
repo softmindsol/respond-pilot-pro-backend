@@ -74,6 +74,8 @@ const register = async (userData) => {
     }
 };
 
+
+
 const login = async ({ email, password }) => {
     const user = await User.findOne({ email: email.toLowerCase() });
 
@@ -84,6 +86,21 @@ const login = async ({ email, password }) => {
     if (await user.matchPassword(password)) {
         if (!user.isVerified) {
             throw new Error('Please verify your email address');
+        }
+
+        // 🔥 Retrofit: If old user doesn't have these fields, initialize them
+        let needsSave = false;
+        if (user.pauseNotifications === undefined) {
+             user.pauseNotifications = false;
+             needsSave = true;
+        }
+        if (user.threshold === undefined) {
+            user.threshold = 20;
+            needsSave = true;
+        }
+        
+        if (needsSave) {
+            await user.save();
         }
 
         return {
@@ -102,6 +119,8 @@ const login = async ({ email, password }) => {
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,
+            pauseNotifications: user.pauseNotifications,
+            threshold: user.threshold,
             token: generateToken(user._id),
         };
     } else {
@@ -117,9 +136,23 @@ const googleLogin = async (idToken) => {
         let user = await User.findOne({ email });
 
         if (user) {
+            let needsSave = false;
             if (!user.googleId) {
                 user.googleId = uid;
                 user.isGoogleAuth = true;
+                needsSave = true;
+            }
+             // 🔥 Retrofit: If old user doesn't have these fields, initialize them
+            if (user.pauseNotifications === undefined) {
+                 user.pauseNotifications = false;
+                 needsSave = true;
+            }
+            if (user.threshold === undefined) {
+                user.threshold = 20;
+                needsSave = true;
+            }
+            
+            if (needsSave) {
                 await user.save();
             }
         } else {
@@ -128,7 +161,9 @@ const googleLogin = async (idToken) => {
                 email: email.toLowerCase(),
                 googleId: uid,
                 isGoogleAuth: true,
-                isVerified: true // Google accounts are verified
+                isVerified: true, // Google accounts are verified
+                pauseNotifications: false,
+                threshold: 20
             });
         }
 
@@ -143,6 +178,8 @@ const googleLogin = async (idToken) => {
             toneType: user.toneType,
             profileImage: user.profileImage,
             phoneNumber: user.phoneNumber,
+            pauseNotifications: user.pauseNotifications,
+            threshold: user.threshold,
             token: generateToken(user._id),
         };
     } catch (error) {
@@ -363,6 +400,8 @@ const verifyEmailOtp = async ({ email, otp }) => {
         name: user.name,
         email: user.email,
         plan: user.plan,
+        pauseNotifications: user.pauseNotifications,
+        threshold: user.threshold,
         token: token,
         message: 'Email verified successfully'
     };
@@ -440,6 +479,10 @@ const updateUserProfile = async (userId, data) => {
     if (data.profileImage) user.profileImage = data.profileImage;
     if (data.phoneNumber) user.phoneNumber = data.phoneNumber;
 
+    // 🔥 Retrofit: If old user doesn't have these fields, initialize them
+    if (user.pauseNotifications === undefined) user.pauseNotifications = false;
+    if (user.threshold === undefined) user.threshold = 20;
+
     await user.save();
 
     return {
@@ -448,6 +491,8 @@ const updateUserProfile = async (userId, data) => {
         email: user.email,
         profileImage: user.profileImage,
         phoneNumber: user.phoneNumber,
+        pauseNotifications: user.pauseNotifications,
+        threshold: user.threshold,
         message: 'Profile updated successfully'
     };
 };
