@@ -10,10 +10,15 @@ export const startNotificationCron = () => {
         console.log("🕵️ Checking for new comments (Hourly Sync)...");
 
         try {
-            // 1. Un users ko dhoondein jinhone channel connect kiya hua hai
             const users = await User.find({ isConnectedToYoutube: true });
 
             for (const user of users) {
+
+                 // 1. 🔥 CHECK: Skip if notifications are paused
+    if (user?.pauseNotifications) {
+        console.log(`🔇 Notifications paused for ${user.email}. Skipping.`);
+        continue;
+    }
                 // 2. Har user ki sabse LATEST video dhoondein
                 const latestVideo = await Video.findOne({ user: user._id })
                     .sort({ publishedAt: -1 });
@@ -29,9 +34,11 @@ export const startNotificationCron = () => {
                     status: 'Pending'
                 });
 
+                    const userThreshold = user?.threshold || 20;
+
                 // 🔥 THRESHOLD CHECK: 20 ya usse zyada pending hon tabhi notify karo
-                if (pendingCount >= 20) {
-                    console.log(`🔔 Notifying ${user.email} about ${pendingCount} comments.`);
+                if (pendingCount >= userThreshold) {
+                   console.log(`🔔 Threshold met (${pendingCount}/${userThreshold}) for ${user.email}`);
                     
                     await sendPushNotification(
                         user._id,

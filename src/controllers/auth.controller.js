@@ -146,6 +146,8 @@ const getProfile = async (req, res) => {
             notificationSettings: user.notificationSettings, // 🔥 Return settings
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
+            pauseNotifications: user.pauseNotifications,
+            threshold: user.threshold,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
