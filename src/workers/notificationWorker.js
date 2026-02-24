@@ -6,7 +6,7 @@ import { sendPushNotification } from '../utils/pushNotifier.js';
 
 export const startNotificationCron = () => {
     // Every minute for testing: '*/1 * * * *'
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('0 * * * *', async () => {
         console.log("🕵️ Checking for new comments...");
 
         try {
