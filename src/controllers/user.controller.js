@@ -38,13 +38,19 @@ export const joinAffiliateProgram = async (req, res) => {
 export const updateSettings = async (req, res) => {
     try {
         const { aiCrisisDetection, threshold, pauseNotifications } = req.body; 
+        console.log("📥 Update Settings Request Body:", req.body);
+        
         const user = await User.findById(req.user._id);
 
         if (aiCrisisDetection !== undefined) user.notificationSettings.aiCrisisDetection = aiCrisisDetection;
-        if (threshold !== undefined) user.threshold = threshold;
+        if (threshold !== undefined) {
+             console.log("⚙️ Setting threshold to:", threshold);
+             user.threshold = threshold;
+        }
         if (pauseNotifications !== undefined) user.pauseNotifications = pauseNotifications;
 
         await user.save();
+        console.log("✅ User updated. New threshold in DB object:", user.threshold);
 
         res.json({ 
             success: true, 
