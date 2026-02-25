@@ -161,22 +161,55 @@ export const generateReply = asyncHandler(async (req, res, next) => {
         try {
             const firstBrace = responseText.indexOf('{');
             const lastBrace = responseText.lastIndexOf('}');
-            let cleanJson = responseText.substring(firstBrace, lastBrace + 1);
             
-            if (!cleanJson.endsWith('}')) cleanJson += '"}';
-            const parsed = JSON.parse(cleanJson);
-            
-            let finalReply = (parsed.reply || "")
-                .replace(/^status:\s*flagged,?\s*/is, '')
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                let cleanJson = responseText.substring(firstBrace, lastBrace + 1);
+                
+                // Repair common JSON issues
+                if (!cleanJson.endsWith('}')) cleanJson += '"}';
+                
+                try {
+                    const parsed = JSON.parse(cleanJson);
+                    let finalReply = parsed.reply || "";
+                    
+                    // If the reply field itself is another JSON string (rare but possible with some models)
+                    if (typeof finalReply === 'string' && finalReply.trim().startsWith('{')) {
+                        try {
+                            const secondPass = JSON.parse(finalReply);
+                            if (secondPass.reply) finalReply = secondPass.reply;
+                        } catch (innerE) {
+                            // Not JSON, continue with original finalReply
+                        }
+                    }
+
+                    aiResult = { 
+                        status: parsed.status || "safe", 
+                        reply: finalReply.toString().trim() 
+                    };
+                } catch (parseError) {
+                    // Fallback to substring extraction if JSON.parse still fails
+                    const statusMatch = cleanJson.match(/"status":\s*"([^"]+)"/);
+                    const replyMatch = cleanJson.match(/"reply":\s*"([\s\S]*?)"(?=\s*}|\s*,)/);
+                    
+                    aiResult.status = statusMatch ? statusMatch[1] : "safe";
+                    aiResult.reply = replyMatch ? replyMatch[1] : cleanJson; 
+                }
+            } else {
+                // No braces found, treat entire text as reply
+                aiResult.reply = responseText.trim();
+            }
+
+            // Final Cleanup for known AI prefixes
+            aiResult.reply = aiResult.reply
+                .replace(/^status:\s*(safe|flagged),?\s*/is, '')
                 .replace(/^reply:\s*/is, '')
                 .replace(/\\"/g, '"')
+                .replace(/\\n/g, '\n')
                 .trim();
 
-            aiResult = { status: parsed.status || "safe", reply: finalReply };
         } catch (e) {
-            const replyMatch = responseText.match(/"reply":\s*"([\s\S]*?)"/);
-            aiResult.reply = replyMatch ? replyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim() : "";
-            aiResult.status = responseText.includes("flagged") ? "flagged" : "safe";
+            console.error("Critical Parsing Failure:", e);
+            aiResult.reply = responseText.substring(0, 500); // Extreme fallback
         }
 
         // 6. SENTENCE COMPLETION AUTO-REPAIR
