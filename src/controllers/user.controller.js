@@ -1,6 +1,8 @@
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
 import Channel from "../models/channel.model.js";
+import Video from "../models/video.model.js";
+import Comment from "../models/comment.model.js";
 
 // User khud Affiliate banna chahta hai (Tier 2)
 export const joinAffiliateProgram = async (req, res) => {
@@ -191,4 +193,56 @@ export const switchActiveChannel = async (req, res) => {
 export const getMyChannels = async (req, res) => {
     const channels = await Channel.find({ user: req.user._id }).select('youtubeChannelName authorAvatar isActive');
     res.json(channels);
+};
+
+export const removeChannel = async (req, res) => {
+    try {
+        const { channelId } = req.body;
+        const userId = req.user._id;
+
+        // 1. Check ownership
+        const channel = await Channel.findOne({ _id: channelId, user: userId });
+        if (!channel) {
+            return res.status(404).json({ message: "Channel not found or unauthorized." });
+        }
+
+        console.log(`🗑️ Deleting data for channel: ${channel.youtubeChannelName}`);
+
+        // 2. 🔥 SURGICAL CLEANUP: Delete associated data
+        await Comment.deleteMany({ channel: channelId, userId: userId });
+        await Video.deleteMany({ channel: channelId, user: userId });
+
+        // 3. Delete the Channel record itself
+        await Channel.findByIdAndDelete(channelId);
+
+        // 4. Update User Model
+        const remainingChannels = await Channel.find({ user: userId });
+        
+        let updateData = {};
+        
+        if (remainingChannels.length === 0) {
+            updateData.activeChannel = null;
+            updateData.isConnectedToYoutube = false;
+        } else {
+            // Agar deleted channel hi active tha, toh kisi aur pe switch karein
+            if (req.user.activeChannel?.toString() === channelId.toString()) {
+                updateData.activeChannel = remainingChannels[0]._id;
+            }
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            await User.findByIdAndUpdate(userId, { $set: updateData });
+        }
+
+        res.json({ 
+            success: true, 
+            message: "Channel removed successfully.",
+            remainingCount: remainingChannels.length,
+            activeChannelId: updateData.activeChannel !== undefined ? updateData.activeChannel : req.user.activeChannel
+        });
+
+    } catch (error) {
+        console.error("🔥 Remove Channel Error:", error);
+        res.status(500).json({ message: error.message });
+    }
 };

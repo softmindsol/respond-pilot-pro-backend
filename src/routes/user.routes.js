@@ -8,7 +8,8 @@ import {
     markAllNotificationsRead, 
     completeOnboarding,
     switchActiveChannel,
-    getMyChannels
+    getMyChannels,
+    removeChannel
 } from '../controllers/user.controller.js';
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
 // Channel Management
 router.put('/switch-channel', protect,  switchActiveChannel);
 router.get('/my-channels', protect, getMyChannels);
+router.delete('/remove-channel', protect, removeChannel);
 
 router.post('/join-affiliate', protect, joinAffiliateProgram);
 router.put('/settings', protect, updateSettings);
