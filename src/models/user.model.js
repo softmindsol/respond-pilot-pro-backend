@@ -140,7 +140,7 @@ notificationSettings: {
     threshold: { 
         type: Number, 
         enum: [20, 50, 100, 500], 
-        default: 20 
+        default: 50 
     }
   
     },
