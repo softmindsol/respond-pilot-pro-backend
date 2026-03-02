@@ -6,6 +6,6 @@ import { checkSubscription } from '../middleware/subscription.middleware.js';
 const router = express.Router();
 
 router.post('/generate-reply', protect,checkSubscription, aiController.generateReply);
-// router.post('/generate-article-stream', protect, aiController.generateArticleWithAIStream); // Removed as we replaced the controller logic
+router.post('/track-reply', protect, aiController.trackExtensionReply);
 
 export default router;
