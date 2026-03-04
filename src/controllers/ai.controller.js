@@ -3,7 +3,6 @@ import User from '../models/user.model.js';
 import Notification from '../models/notification.model.js'; 
 import { PERSONAS } from '../config/personas.js';
 
-// --- 🔥 NEW: HOOK DIVERSITY STRATEGIES ---
 const HOOK_STRATEGIES = [
     "Jump into the solution or answer immediately without any greeting.",
     "Mention a specific keyword or noun the user used in your first 3 words.",
@@ -21,7 +20,6 @@ const HOOK_STRATEGIES = [
     "Start with 'Personally, I feel...' to give a creator's perspective.",
     "Be action-oriented: Start with 'On it!' or 'Adding this to my notes!'"
 ];
-
 // Utils 
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
