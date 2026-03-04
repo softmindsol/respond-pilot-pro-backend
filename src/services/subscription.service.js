@@ -14,7 +14,10 @@ const PLAN_CREDITS = {
     'Basic': 1000,
     'Pro': 5000,
     'PRO_PLUS': 15000,
-    'TOP_UP': 500
+    'TOP_UP_EMERGENCY': 500,
+    'TOP_UP_BOOSTER': 1000,
+    'TOP_UP_VIRAL': 5000,
+    'TOP_UP_FULL_UNIT': 15000
 };
 
 // Map Plans to Price IDs
@@ -22,7 +25,10 @@ const PLAN_PRICES = {
     'Basic': process.env.STRIPE_PRICE_BASIC,
     'Pro': process.env.STRIPE_PRICE_PRO,
     'PRO_PLUS': process.env.STRIPE_PRICE_PRO_PLUS,
-    'TOP_UP': process.env.STRIPE_PRICE_TOP_UP,
+    'TOP_UP_EMERGENCY': process.env.STRIPE_PRICE_TOP_UP_EMERGENCY,
+    'TOP_UP_BOOSTER': process.env.STRIPE_PRICE_TOP_UP_BOOSTER,
+    'TOP_UP_VIRAL': process.env.STRIPE_PRICE_TOP_UP_VIRAL,
+    'TOP_UP_FULL_UNIT': process.env.STRIPE_PRICE_TOP_UP_FULL_UNIT,
 };
 
 // 1. Create Checkout Session
@@ -30,9 +36,10 @@ export const createCheckoutSession = async (user, planType) => {
     if (!stripe) throw new Error("Stripe is not configured");
 
     const normalizedPlanType = Object.keys(PLAN_PRICES).find(key => key.toLowerCase() === planType.toLowerCase());
+    const isReqTopUp = normalizedPlanType?.startsWith('TOP_UP');
 
 
-    if (user.stripeSubscriptionId && normalizedPlanType !== 'TOP_UP') {
+    if (user.stripeSubscriptionId && !isReqTopUp) {
         console.log("🔄 User already subscribed. Redirecting to Portal for Swap.");
 
         // Portal session create karein jahan user direct 'Change Plan' kar sake
@@ -72,10 +79,10 @@ export const createCheckoutSession = async (user, planType) => {
     let customerId = user.stripeCustomerId;
     if (!customerId) {
         customerId = await createNewCustomer();
-    }
+    } 
 
     // 🔥 LOGIC: Top-Up is 'payment', Plans are 'subscription'
-    const isTopUp = normalizedPlanType === 'TOP_UP';
+    const isTopUp = normalizedPlanType?.startsWith('TOP_UP');
     const sessionMode = isTopUp ? 'payment' : 'subscription';
     console.log(`Creating Session for User: ${user._id}, Plan: ${normalizedPlanType}`);
 
@@ -306,7 +313,7 @@ const handleCheckoutCompleted = async (session) => {
 
     if (creditsToAdd > 0) {
         // 🔥 LOGIC: Top-Up vs Subscription
-        if (planType === 'TOP_UP') {
+        if (planType.startsWith('TOP_UP')) {
             // Top-Up: Sirf Credits ADD karo (Reset mat karo)
             user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
         } else {

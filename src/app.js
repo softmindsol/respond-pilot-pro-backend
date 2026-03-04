@@ -22,10 +22,37 @@ app.use((req, res, next) => {
 });
 
 // --- CORS Configuration ---
+// app.use(cors({
+//     origin: ["https://www.youtube.com","http://localhost:5173", "http://localhost:5174","https://admin.respondpilotpro.com", "https://www.respondpilotpro.com", "https://respondpilotpro.com"], // Frontend URL
+//     credentials: true
+// }));
+
+const allowedOrigins = [
+    "https://www.youtube.com",
+    "http://localhost:5173", 
+    "http://localhost:5174",
+    "https://admin.respondpilotpro.com", 
+    "https://www.respondpilotpro.com", 
+    "https://respondpilotpro.com",
+    "https://api.respondpilotpro.com",
+    "chrome-extension://pghcemheomjepbaebclkoogideahcabc" // Your Extension ID
+];
+
+
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:5174","https://admin.respondpilotpro.com", "https://www.respondpilotpro.com", "https://respondpilotpro.com"], // Frontend URL
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('chrome-extension://')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
+
 
 // Serve Uploads Folder
 app.use('/uploads', express.static('uploads'));

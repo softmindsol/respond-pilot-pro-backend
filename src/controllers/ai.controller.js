@@ -246,4 +246,21 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     }
 });
 
-export default { generateReply };
+export const trackExtensionReply = asyncHandler(async (req, res, next) => {
+    const user = req.user;
+
+
+    const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        { $inc: { repliesUsed: 1 } },
+        { new: true }
+    );
+console.log("Updated User:", updatedUser);
+    res.json({
+        success: true,
+        message: "Reply count incremented via extension.",
+        usage: { used: updatedUser.repliesUsed, limit: updatedUser.repliesLimit }
+    });
+});
+
+export default { generateReply, trackExtensionReply };
