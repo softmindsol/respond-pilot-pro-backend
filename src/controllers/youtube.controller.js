@@ -2,6 +2,7 @@ import User from '../models/user.model.js';
 import youtubeService from '../services/youtube.service.js';
 import ReplyQueue from '../models/queue.model.js';
 import Comment from '../models/comment.model.js';
+import subscriptionService from '../services/subscription.service.js';
 
 const getAuthUrl = (req, res) => {
     try {
@@ -79,17 +80,14 @@ const postReply = async (req, res) => {
 
         const data = await youtubeService.postReplyToComment(user._id, commentId, commentText);
 
-        const updatedUser = await User.findByIdAndUpdate(
-            user._id,
-            { $inc: { repliesUsed: 1 } },
-            { new: true }
-        );
+        const updatedUser = await subscriptionService.deductUserCredits(user._id, 1);
 
         res.json({
             ...data,
             usage: {
                 // Frontend ko updated count bhejen taake UI foran update ho
-                repliesUsed: updatedUser.repliesUsed
+                repliesUsed: updatedUser.repliesUsed,
+                topUpBalance: updatedUser.topUpBalance
             }
         });
     } catch (error) {
@@ -167,7 +165,7 @@ console.log("Channel ID:", channelId);
         await ReplyQueue.insertMany(queueItems);
 
         // 3. Increment Usage Count Based on Comments Count (Upfront Charge)
-        await User.findByIdAndUpdate(userId, { $inc: { repliesUsed: replies.length } });
+        await subscriptionService.deductUserCredits(userId, replies.length);
 
         // 3. Mark these comments as "Replied" in our DB so they disappear from "Pending" feed
         const commentIds = replies.map(r => r.commentId);

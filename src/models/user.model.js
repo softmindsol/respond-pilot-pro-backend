@@ -35,6 +35,10 @@ const userSchema = mongoose.Schema(
             type: Number,
             default: 0
         },
+         topUpBalance: {
+            type: Number,
+            default: 0 // 🔥 NEW: Extra khareeday huye credits (Reset NAHI hogi)
+        },
         isGoogleAuth: {
             type: Boolean,
             default: false,
