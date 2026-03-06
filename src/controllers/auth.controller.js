@@ -130,6 +130,7 @@ const getProfile = async (req, res) => {
             plan: user.plan,
             repliesLimit: user.repliesLimit,
             repliesUsed: user.repliesUsed || 0,
+            topUpBalance: user.topUpBalance || 0,
             isConnectedToYoutube: user.isConnectedToYoutube,
             youtubeChannelName: user.youtubeChannelName,
             youtubeChannelId: user.youtubeChannelId,

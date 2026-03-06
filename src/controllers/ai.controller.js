@@ -1,6 +1,7 @@
 import { llmClient } from '../utils/llmClientStream.js';
 import User from '../models/user.model.js';
 import Notification from '../models/notification.model.js'; 
+import subscriptionService from '../services/subscription.service.js';
 import { PERSONAS } from '../config/personas.js';
 
 const HOOK_STRATEGIES = [
@@ -122,8 +123,10 @@ export const generateReply = asyncHandler(async (req, res, next) => {
     // 1. LIMIT CHECK
     const used = user.repliesUsed || 0;
     const limit = user.repliesLimit || 50;
-    if (user.affiliateTier !== 'tier1' && used >= limit) {
-        return handleError(next, `Usage limit reached.`, STATUS_CODES.FORBIDDEN);
+    const totalAvailable = limit + (user.topUpBalance || 0);
+
+    if (user.affiliateTier !== 'tier1' && used >= totalAvailable) {
+        return handleError(next, `Usage limit reached (Subscription + Top-up).`, STATUS_CODES.FORBIDDEN);
     }
 
     // 2. TONE RESOLUTION
@@ -237,7 +240,7 @@ export const generateReply = asyncHandler(async (req, res, next) => {
             success: true,
             status: aiResult.status,
             reply: aiResult.reply,
-            usage: { used: user.repliesUsed, limit: limit }
+            usage: { used: user.repliesUsed, limit: limit, topUp: user.topUpBalance }
         });
 
     } catch (err) {
@@ -250,16 +253,16 @@ export const trackExtensionReply = asyncHandler(async (req, res, next) => {
     const user = req.user;
 
 
-    const updatedUser = await User.findByIdAndUpdate(
-        user._id,
-        { $inc: { repliesUsed: 1 } },
-        { new: true }
-    );
+    const updatedUser = await subscriptionService.deductUserCredits(user._id, 1);
 console.log("Updated User:", updatedUser);
     res.json({
         success: true,
         message: "Reply count incremented via extension.",
-        usage: { used: updatedUser.repliesUsed, limit: updatedUser.repliesLimit }
+        usage: { 
+            used: updatedUser.repliesUsed, 
+            limit: updatedUser.repliesLimit, 
+            topUp: updatedUser.topUpBalance 
+        }
     });
 });
 

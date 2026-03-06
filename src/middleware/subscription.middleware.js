@@ -57,13 +57,14 @@ export const checkSubscription = async (req, res, next) => {
         // Hum DB field 'repliesLimit' use karenge (taake Top-Ups bhi count hon).
         // Agar DB mein field missing hai, to hardcoded Plan Limit use karenge.
         const limit = user.repliesLimit || PLAN_LIMITS[user.plan] || 50;
+        const totalCreditsAvailable = limit + (user.topUpBalance || 0);
 
-        if (used >= limit) {
+        if (used >= totalCreditsAvailable) {
             return res.status(403).json({ 
-                message: "You have reached your reply limit.",
+                message: "You have reached your reply limit (Plan + Top-up).",
                 reason: "limit_exceeded",
                 currentPlan: user.plan,
-                usage: { used, limit }
+                usage: { used, limit, totalCreditsAvailable }
             });
         }
 

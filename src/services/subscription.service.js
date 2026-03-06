@@ -232,6 +232,7 @@ const processCommission = async (email, amountInDollars, paymentId) => {
 };
 
 export const handleWebhook = async (event) => {
+    console.log("Webhook Raw Data:", event);
     if (!stripe) return;
 
     try {
@@ -315,7 +316,9 @@ const handleCheckoutCompleted = async (session) => {
         // 🔥 LOGIC: Top-Up vs Subscription
         if (planType.startsWith('TOP_UP')) {
             // Top-Up: Sirf Credits ADD karo (Reset mat karo)
-            user.repliesLimit = (user.repliesLimit || 0) + creditsToAdd;
+            user.topUpBalance  = (user.topUpBalance  || 0) + creditsToAdd;
+                        console.log(`➕ Added ${creditsToAdd} to Top-up Balance for ${user.email}`);
+
         } else {
             // Subscription: Plan change karo aur Reset karo
             user.plan = planType;
@@ -444,26 +447,40 @@ const handleSubscriptionUpdated = async (subscription) => {
         await user.save();
     }
 };
+// Real-time Deduction Logic: Plan Credits first, then Top-up Balance
+export const deductUserCredits = async (userId, amount = 1) => {
+    const user = await User.findById(userId);
+    if (!user) return null;
+
+    let toDeduct = amount;
+    const planLimit = user.repliesLimit || 0;
+    const planUsed = user.repliesUsed || 0;
+    const planAvailable = Math.max(0, planLimit - planUsed);
+
+    if (planAvailable > 0) {
+        const fromPlan = Math.min(toDeduct, planAvailable);
+        user.repliesUsed += fromPlan;
+        toDeduct -= fromPlan;
+    }
+
+    if (toDeduct > 0) {
+        user.topUpBalance = Math.max(0, (user.topUpBalance || 0) - toDeduct);
+    }
+
+    await user.save();
+    return user;
+};
+ 
 // Sub-helper for renewal logic
 const resetUserQuota = async (user) => {
     console.log(`🔄 Monthly Renewal: Resetting quota for ${user.email}`);
 
     const basePlanLimit = PLAN_CREDITS[user.plan] || 0;
-    const currentLimit = user.repliesLimit || 0;
-    const used = user.repliesUsed || 0;
-
-    // 🔥 TOP-UP ROLLOVER LOGIC
-    let remainingTopUp = 0;
-    if (currentLimit > basePlanLimit) {
-        const totalTopUpOwned = currentLimit - basePlanLimit;
-        const usageFromTopUp = Math.max(0, used - basePlanLimit);
-        remainingTopUp = Math.max(0, totalTopUpOwned - usageFromTopUp);
-    }
 
     user.repliesUsed = 0;
-    user.repliesLimit = basePlanLimit + remainingTopUp;
+    user.repliesLimit = basePlanLimit; // Monthly rest to base
     await user.save();
-    console.log(`✅ Limit Reset. New Limit: ${user.repliesLimit}`);
+    console.log(`✅ Quota Reset. Monthly: ${user.repliesLimit}, Remaining Top-up: ${user.topUpBalance}`);
 };
 
 const handleSubscriptionDeleted = async (subscription) => {
@@ -491,5 +508,6 @@ const handleSubscriptionDeleted = async (subscription) => {
 export default {
     createCheckoutSession,
     createCustomerPortalSession,
-    handleWebhook
+    handleWebhook,
+    deductUserCredits
 };
