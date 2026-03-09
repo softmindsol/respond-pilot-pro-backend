@@ -15,7 +15,7 @@ export const startNotificationCron = () => {
             const users = await User.find({ isConnectedToYoutube: true });
 
             for (const user of users) {
-                const settings = user.notificationSettings || {};
+                const settings = user || {};
                 if (settings.pauseNotifications) continue;
 
                 // 🔥 2. Har User ke saare CONNECTED CHANNELS dhoondein
