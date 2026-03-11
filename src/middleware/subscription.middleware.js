@@ -23,14 +23,15 @@ export const checkSubscription = async (req, res, next) => {
         // ======================================================
         // Agar user Tier 1 hai, to usay kisi limit ya payment ki zaroorat nahi.
         if (user.affiliateTier === 'tier1') {
-            console.log(`✨ Founding Partner Access: ${user.email}`);
             const VIP_LIMIT = 5000;
+            const limit = user.repliesLimit || VIP_LIMIT;
+            const totalAvailable = limit + (user.topUpBalance || 0);
             
-            if (used >= VIP_LIMIT) {
+            if (used >= totalAvailable) {
                 return res.status(403).json({ 
-                    message: "Founding Partner limit (5,000) reached. Please buy a Top-Up.",
+                    message: "Founding Partner limit reached. Please buy a Top-Up.",
                     reason: "limit_exceeded",
-                    usage: { used, limit: VIP_LIMIT }
+                    usage: { used, limit, totalAvailable }
                 });
             }
             return next(); 

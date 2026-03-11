@@ -15,7 +15,7 @@ router.post('/reply', protect,checkSubscription, youtubeController.postReply);
 router.post('/disconnect', protect, youtubeController.disconnectChannel);
 router.get('/comments/sync', protect, syncLimiter, youtubeController.getSyncedComments);
 // 🔥 Post all safe drafts to background queue
-router.post('/queue-bulk', protect, youtubeController.queueBulkReplies);
+router.post('/queue-bulk', protect, checkSubscription, youtubeController.queueBulkReplies);
 
 // 🔥 Check how many replies are posted/pending
 router.get('/queue-progress', protect, youtubeController.getQueueProgress);
