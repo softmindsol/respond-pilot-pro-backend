@@ -35,7 +35,7 @@ const allowedOrigins = [
     "https://www.respondpilotpro.com", 
     "https://respondpilotpro.com",
     "https://api.respondpilotpro.com",
-    "chrome-extension://pghcemheomjepbaebclkoogideahcabc" // Your Extension ID
+    "chrome-extension://gdknphjpgapljoilihmlkhnnpfdpfgkp" // Your Extension ID
 ];
 
 
